@@ -33,7 +33,8 @@ module tdmasim
     #Tenative TDMA unique word
     const uw = UInt8[0,1,1,0,0,1,1,1,1,0,1,0,1,1,0,1]
 
-    function setup_tdma_sim(config ::TdmaConfig)
+    #Set up a TDMA simulation from a configuration
+    function TdmaSim(config ::TdmaConfig)
         #Setup slot xmitters
         Fs = config.samprate
         Rs = config.symrate
@@ -91,8 +92,9 @@ module tdmasim
         samps
     end
 
-    function tdma_sim_main(config,nsets)
-
+    function tdma_sim_main(config,nsets,outfile)
+        sim = TdmaSim(config)
+        
     end
 
     function mainish()
