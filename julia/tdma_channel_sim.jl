@@ -73,28 +73,38 @@ module tdmasim
         padding_samps = Ts*padding
         assert(abs(xmtr.timing_offset)<padding_samps)
 
+        #Scale this signal for Eb/N0
+        #TODO: figure out how to do this
         EbN0_Scale = 1
 
-        println("slot:$nslotsyms frame:$nsyms\n")
+        #Frequency shift
+        w = 2.*pi*xmtr.freq_offset/Float32(sim.config.samprate)
+        shift = exp(im*(1:nsyms*Ts)*w)
 
         frame_bits = generate_frame_bits(sim,xmtr.master)
         samps = zeros(Complex{Float32},nslotsyms*Ts)
         fsk_sig = cfsk.fsk_mod_c(xmtr.fsk,frame_bits)
-
+        fsk_sig = fsk_sig .* shift
         frame_offset = padding_samps+xmtr.timing_offset
 
         samps[(1:Ts*nsyms)+frame_offset] = fsk_sig*EbN0_Scale
         samps
     end
 
-    function tdma_sim_main()
+    function tdma_sim_main(config,nsets)
 
     end
 
     function mainish()
         sim = setup_tdma_sim(config_4800T)
         sim.xmitters[1].timing_offset=-35
-        modulate_slot(sim,sim.xmitters[1])
+        sim.xmitters[1].freq_offset=4800
+        samps = modulate_slot(sim,sim.xmitters[1])
+        noise_i = convert(Array{Float32},randn(length(samps)))
+        noise_r = convert(Array{Float32},randn(length(samps)))
+        noise = noise_i.*im + noise_r
+
+        samps+noise*.1
     end
 
 end
