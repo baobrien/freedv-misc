@@ -28,7 +28,7 @@
 =#
 
 module cfsk
-    const codec2_lib = "../build_linux/src/libcodec2.so"
+    const codec2_lib = "../freetel-code/codec2-dev/build_linux/src/libcodec2.so"
     import Base.show
 
     type fsk_modem_c
@@ -117,6 +117,9 @@ module cfsk
 
     #Extract the parameter Nbits from the FSK modem
     fsk_get_N(fsk ::fsk_modem) = fsk_get_member(fsk,Cint,3)
+
+    #Extract the number of samples per symbol
+    fsk_get_Ts(fsk ::fsk_modem) = fsk_get_member(fsk,Cint,5)
         
     #Modulate a single FSK frame, produce floating point samples 
     function fsk_mod_frame(fsk ::fsk_modem,tx_bits::Array{UInt8,1})
