@@ -63,7 +63,7 @@ module tdmasim
     end
     
     #Generate a slot's worth of modulated and impaired fsk
-    function modulate_slot(sim,xmtr)
+    function modulate_slot(sim::TdmaSim,xmtr::TdmaXmtr)
         #Inter-frame padding (in symbols)
         padding = (sim.config.slot_syms - sim.config.frame_syms)
         #Padding on the front and back of frame
@@ -92,13 +92,48 @@ module tdmasim
         samps
     end
 
+    function randrange(min::Int64 ,max::Int64)
+        range = max-min
+        rangeb2 = Integer(2.^ceil(log2(range)))-1
+        num = rand(Int64)&rangeb2
+        num <= range ? num+min : randrange(min,max)
+    end
+
     function tdma_sim_main(config,nsets,outfile)
         sim = TdmaSim(config)
-        
+        #Seed the RNG
+        srand(1)
+        range_ebno = (8.,18.)
+        range_freq = (-300.,3000.)
+        range_timing = (-25,25)
+        #Give some random impairments
+        for slot = sim.xmitters
+            slot.EbN0 = range_ebno[1] + rand()*(range_ebno[2]-range_ebno[1])
+            slot.freq_offset = range_freq[1] + rand()*(range_freq[2]-range_freq[1])
+            slot.timing_offset = randrange(range_timing[1],range_timing[2])
+        end
+        Ts = div(sim.config.samprate,sim.config.symrate)
+        nsamps = nsets*sim.config.slots*sim.config.slot_syms*Ts
+
+        #make some noise
+        noise_i = convert(Array{Float32},randn(nsamps))
+        noise_r = convert(Array{Float32},randn(nsamps))
+        sampbuf = Complex{Float32}[]
+        for i=0:nsets-1
+            st = i    *(config.slot_syms*Ts)
+            en = (i+1)*(config.slot_syms*Ts)
+            for slot = sim.xmitters
+                #Modulate slots and build up sample buffer progressively
+                #NOTE: this could be a bottleneck at some point
+                sampbuf = vcat(sampbuf,modulate_slot(sim,slot))
+            end
+        end
+
+        sampbuf
     end
 
     function mainish()
-        sim = setup_tdma_sim(config_4800T)
+        sim = TdmaSim(config_4800T)
         sim.xmitters[1].timing_offset=-35
         sim.xmitters[1].freq_offset=4800
         samps = modulate_slot(sim,sim.xmitters[1])
@@ -111,4 +146,4 @@ module tdmasim
 
 end
 
-tdmasim.mainish()
+#tdmasim.mainish()
