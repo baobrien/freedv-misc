@@ -31,6 +31,8 @@ module cfsk
     const codec2_lib = "../freetel-code/codec2-dev/build_linux/src/libcodec2.so"
     import Base.show
 
+    #Mirror of the C FSK modem struct
+    #NOTE: This is not being used
     type fsk_modem_c
         Ndft        ::Cint
         Fs          ::Cint

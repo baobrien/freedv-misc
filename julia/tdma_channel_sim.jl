@@ -104,7 +104,7 @@ module tdmasim
         #Seed the RNG
         srand(1)
         range_ebno = (8.,18.)
-        range_freq = (-300.,3000.)
+        range_freq = (-300.,300.)
         range_timing = (-25,25)
         #Give some random impairments
         for slot = sim.xmitters
@@ -115,9 +115,6 @@ module tdmasim
         Ts = div(sim.config.samprate,sim.config.symrate)
         nsamps = nsets*sim.config.slots*sim.config.slot_syms*Ts
 
-        #make some noise
-        noise_i = convert(Array{Float32},randn(nsamps))
-        noise_r = convert(Array{Float32},randn(nsamps))
         sampbuf = Complex{Float32}[]
         for i=0:nsets-1
             st = i    *(config.slot_syms*Ts)
@@ -128,8 +125,12 @@ module tdmasim
                 sampbuf = vcat(sampbuf,modulate_slot(sim,slot))
             end
         end
-
-        sampbuf
+        
+        #make some noise
+        noise_i = convert(Array{Float32},randn(nsamps))
+        noise_r = convert(Array{Float32},randn(nsamps))
+        #Add constant noise to signal
+        sampbuf += (noise_r .+ noise_i .* im).*.1
     end
 
     function mainish()
