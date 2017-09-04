@@ -1,3 +1,33 @@
+#=
+----------------------------------------------------------------------------
+
+  FILE........: tdma_channel_sim.jl
+  AUTHOR......: Brady O'Brien
+  DATE CREATED: 26 August 2017
+
+  TDMA channel simulation routines to help build 
+
+----------------------------------------------------------------------------
+=#
+
+#=
+  Copyright (C) 2017 Brady O'Brien
+
+  All rights reserved.
+
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU Lesser General Public License version 2.1, as
+  published by the Free Software Foundation.  This program is
+  distributed in the hope that it will be useful, but WITHOUT ANY
+  WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
+  License for more details.
+
+  You should have received a copy of the GNU Lesser General Public License
+  along with this program; if not, see <http://www.gnu.org/licenses/>.
+=#
+
+
 module tdmasim
     include("fsk_wrapper.jl")
     #using cfsk
@@ -83,7 +113,7 @@ module tdmasim
         
         #Frequency shift
         w = 2.*pi*xmtr.freq_offset/Float32(sim.config.samprate)
-        shift = exp(im*(1:nsyms*Ts)*w)
+        shift = exp.(im*(1:nsyms*Ts)*w)
 
         frame_bits = generate_frame_bits(sim,xmtr.master)
         samps = zeros(Complex{Float32},nslotsyms*Ts)
@@ -102,26 +132,15 @@ module tdmasim
         num <= range ? num+min : randrange(min,max)
     end
 
-    function tdma_sim_main(config,nsets,outfilename)
-        sim = TdmaSim(config)
-        #Seed the RNG
-        srand(1)
-        range_ebno = (10.,18.)
-        range_freq = (0.,300.)
-        range_timing = (-25,25)
-        #Give some random impairments
-        for slot = sim.xmitters
-            slot.EbN0 = range_ebno[1] + rand()*(range_ebno[2]-range_ebno[1])
-            slot.freq_offset = range_freq[1] + rand()*(range_freq[2]-range_freq[1])
-            slot.timing_offset = randrange(range_timing[1],range_timing[2])
-        end
+    #Run a simulation and return samples
+    function tdma_sim_run(sim,nsets)
         Ts = div(sim.config.samprate,sim.config.symrate)
         nsamps = nsets*sim.config.slots*sim.config.slot_syms*Ts
 
         sampbuf = Complex{Float32}[]
         for i=0:nsets-1
-            st = i    *(config.slot_syms*Ts)
-            en = (i+1)*(config.slot_syms*Ts)
+            st = i    *(sim.config.slot_syms*Ts)
+            en = (i+1)*(sim.config.slot_syms*Ts)
             for slot = sim.xmitters
                 #Modulate slots and build up sample buffer progressively
                 #NOTE: this could be a bottleneck at some point
@@ -135,25 +154,35 @@ module tdmasim
         #Add constant noise to signal
         sampbuf += (noise_r .+ noise_i .* im)
 
-        outfile = open(outfilename,"w+")
-        write(outfile,sampbuf)
-        close(outfile)
-
         sampbuf
     end
 
-    function mainish()
-        sim = TdmaSim(config_4800T)
-        sim.xmitters[1].timing_offset=-35
-        sim.xmitters[1].freq_offset=4800
-        samps = modulate_slot(sim,sim.xmitters[1])
-        noise_i = convert(Array{Float32},randn(length(samps)))
-        noise_r = convert(Array{Float32},randn(length(samps)))
-        noise = noise_i.*im + noise_r
+    #Set up a TDMA simulation with a few random parameters for the xmitters
+    function tdma_sim_rand(config)       
+        sim = TdmaSim(config)
+        #Seed the RNG
+        srand(1)
+        range_ebno = (10.,18.)
+        range_freq = (0.,300.)
+        range_timing = (-25,25)
+        #Give some random impairments
+        for slot = sim.xmitters
+            slot.EbN0 = range_ebno[1] + rand()*(range_ebno[2]-range_ebno[1])
+            slot.freq_offset = range_freq[1] + rand()*(range_freq[2]-range_freq[1])
+            slot.timing_offset = randrange(range_timing[1],range_timing[2])
+        end
+        return sim
+    end
 
-        samps+noise*.1
+    #Set up and run a random simulation, return samps
+    tdma_sim_main(config,nsets) = tdma_sim_run(tdma_sim_rand(config),nsets)
+
+    #Run a simulation and save samples to a file
+    function tdma_sim_main(config,nsets,outfilename)
+        sampbuf = tdma_sim_main(config,nsets)
+        outfile = open(outfilename,"w+")
+        write(outfile,sampbuf)
+        close(outfile)
     end
 
 end
-
-#tdmasim.mainish()
