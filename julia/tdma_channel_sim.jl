@@ -71,13 +71,16 @@ module tdmasim
         Ts = cfsk.fsk_get_Ts(xmtr.fsk)
         nslotsyms = sim.config.slot_syms
         nsyms = sim.config.frame_syms
+        bitpersym = Int(log2(sim.config.fsk_m))
         padding_samps = Ts*padding
         assert(abs(xmtr.timing_offset)<padding_samps)
 
         #Scale this signal for Eb/N0
-        #TODO: figure out how to do this
-        EbN0_Scale = 1
-
+        EbN0dB = xmtr.EbN0
+        EbN0 = 10^(EbN0dB/10)
+        variance = sim.config.samprate/(EbN0*sim.config.symrate*bitpersym)
+        EbN0_scale = 1/sqrt(variance)
+        
         #Frequency shift
         w = 2.*pi*xmtr.freq_offset/Float32(sim.config.samprate)
         shift = exp(im*(1:nsyms*Ts)*w)
@@ -88,7 +91,7 @@ module tdmasim
         fsk_sig = fsk_sig .* shift
         frame_offset = padding_samps+xmtr.timing_offset
 
-        samps[(1:Ts*nsyms)+frame_offset] = fsk_sig*EbN0_Scale
+        samps[(1:Ts*nsyms)+frame_offset] = fsk_sig*EbN0_scale
         samps
     end
 
@@ -99,12 +102,12 @@ module tdmasim
         num <= range ? num+min : randrange(min,max)
     end
 
-    function tdma_sim_main(config,nsets,outfile)
+    function tdma_sim_main(config,nsets,outfilename)
         sim = TdmaSim(config)
         #Seed the RNG
         srand(1)
-        range_ebno = (8.,18.)
-        range_freq = (-300.,300.)
+        range_ebno = (10.,18.)
+        range_freq = (0.,300.)
         range_timing = (-25,25)
         #Give some random impairments
         for slot = sim.xmitters
@@ -130,7 +133,13 @@ module tdmasim
         noise_i = convert(Array{Float32},randn(nsamps))
         noise_r = convert(Array{Float32},randn(nsamps))
         #Add constant noise to signal
-        sampbuf += (noise_r .+ noise_i .* im).*.1
+        sampbuf += (noise_r .+ noise_i .* im)
+
+        outfile = open(outfilename,"w+")
+        write(outfile,sampbuf)
+        close(outfile)
+
+        sampbuf
     end
 
     function mainish()
