@@ -77,7 +77,9 @@ module cfsk
             (Cint,Cint,Cint,Cint,Cint,Cint),
             Fs,Rs,P,M,tx_f1,tx_fs
         )
-        return fsk_modem(fsk_C)
+        modem = fsk_modem(fsk_C)
+        finalizer(modem,fsk_destroy) #hook fsk_destroy into Julia's GC
+        return modem
     end
     
     function fsk_destroy(fsk ::fsk_modem)
