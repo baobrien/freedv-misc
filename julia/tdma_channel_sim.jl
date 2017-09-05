@@ -125,6 +125,7 @@ module tdmasim
         samps
     end
 
+    #Helper function to produce a random integer within a range
     function randrange(min::Int64 ,max::Int64)
         range = max-min
         rangeb2 = Integer(2.^ceil(log2(range)))-1
