@@ -38,7 +38,8 @@ module tdmasim
         timing_offset ::Int32   #Timing offset in samples
         EbN0 ::Float32          #AWGN Channel EbN0
         freq_offset ::Float32   #Frequency offset
-        master                  #Flag to indicate master status. Currently does nothing.
+        master  ::Bool          #Flag to indicate master status. Currently does nothing.
+        enable  ::Bool          #Flag to indicate wether or not this slot is enabled
     end
 
     #Structure containing high level config for simulation
@@ -73,7 +74,7 @@ module tdmasim
             map(x->(
                 fsk = cfsk.fsk_create_hbr(Fs,Rs,(Fs/Rs),M,Rs,Rs);
                 cfsk.fsk_set_nsym(fsk,config.frame_syms);
-                TdmaXmtr(fsk,0,0.,0.,false))
+                TdmaXmtr(fsk,0,0.,0.,false,true))
                 ,1:config.slots),
             config
         )
