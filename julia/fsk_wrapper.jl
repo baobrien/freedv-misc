@@ -83,9 +83,7 @@ module cfsk
     end
     
     function fsk_destroy(fsk ::fsk_modem)
-        if fsk.fsk_C == C_NULL
-            return
-        end
+        assert(fsk.fsk_C != C_NULL)
         ccall(
             (:fsk_destroy,codec2_lib),
             Void,
@@ -95,9 +93,7 @@ module cfsk
     end
 
     function fsk_set_nsym(fsk ::fsk_modem,nsym)
-        if fsk.fsk_C == C_NULL
-            return;
-        end
+        assert(fsk.fsk_C != C_NULL)
         ccall(
             (:fsk_set_nsym,codec2_lib),
             Void,
@@ -107,9 +103,7 @@ module cfsk
 
     #This is a hack to extract a C-int value from the structure, as julia doesn't do c-struct-from-pointer
     function fsk_get_member(fsk ::fsk_modem,T,offset)
-        if fsk.fsk_C == C_NULL
-            return 0;
-        end
+        assert(fsk.fsk_C != C_NULL)
         return unsafe_load(Ptr{T}(fsk.fsk_C),offset)
     end    
 
@@ -125,11 +119,18 @@ module cfsk
     #Extract the number of samples per symbol
     fsk_get_Ts(fsk ::fsk_modem) = fsk_get_member(fsk,Cint,5)
         
+    #Get number of samples needed for the next demod cycle
+    function fsk_nin(fsk ::fsk_modem)
+        assert(fsk.fsk_C != C_NULL)
+        ccall((:fsk_nin,codec2_lib),
+            Cint,
+            (Ptr{Void},),
+            fsk.fsk_C)
+    end
+    
     #Modulate a single FSK frame, produce floating point samples 
     function fsk_mod_frame(fsk ::fsk_modem,tx_bits::Array{UInt8,1})
-        if fsk.fsk_C == C_NULL
-            return zeros(Float32)
-        end
+        assert(fsk.fsk_C != C_NULL)
         nbits = fsk_get_nbits(fsk)
         nsamp = fsk_get_N(fsk)
         if nbits==0 || nsamp == 0
@@ -144,18 +145,14 @@ module cfsk
             (:fsk_mod,codec2_lib),
             Void,
             (Ptr{Void},Ptr{Float32},Ptr{UInt8}),
-            fsk.fsk_C,
-            samp_array,
-            tx_bits
+            fsk.fsk_C,samp_array,tx_bits
         )
         return samp_array
     end        
 
     #Modulate a single FSK frame, produce complex samples
     function fsk_mod_c_frame(fsk ::fsk_modem,tx_bits::Array{UInt8,1})
-        if fsk.fsk_C == C_NULL
-            return zeros(Complex{Float32})
-        end
+        assert(fsk.fsk_C != C_NULL)
         nbits = fsk_get_nbits(fsk)
         nsamp = fsk_get_N(fsk)
         if nbits==0 || nsamp == 0
@@ -170,11 +167,28 @@ module cfsk
             (:fsk_mod_c,codec2_lib),
             Void,
             (Ptr{Void},Ptr{Complex{Float32}},Ptr{UInt8}),
-            fsk.fsk_C,
-            samp_array,
-            tx_bits
+            fsk.fsk_C, samp_array, tx_bits
         )
         return samp_array
+    end
+
+    #Wrapper around fsk_demod
+    function fsk_demod_frame!(fsk ::fsk_modem,bits_out ::Array{UInt8,1}, fsk_in ::Array{Complex{Float32},1})
+        assert(fsk.fsk_C != C_NULL)
+        assert(length(fsk_in) == fsk_nin(fsk))
+        assert(length(bits_out) == fsk_get_nbits(fsk))
+        ccall(
+            (:fsk_demod,codec2_lib),
+            Void,
+            (Ptr{Void},Ptr{UInt8},Ptr{Complex{Float32}}),
+            fsk.fsk_C, bits_out, fsk_in
+        )
+    end
+
+    function fsk_demod_frame(fsk ::fsk_modem,fsk_in ::Array{Complex{Float32},1})
+        bits = zeros(UInt8,fsk_get_nbits(fsk))
+        fsk_demod_frame!(fsk,bits,fsk_in)
+        return bits
     end
 
     #Modulate many frames, produce float samples
@@ -207,4 +221,6 @@ module cfsk
         end
         sampout
     end
+
+
 end
