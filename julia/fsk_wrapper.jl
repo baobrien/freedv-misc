@@ -101,6 +101,16 @@ module cfsk
             fsk.fsk_C,nsym)
     end
 
+    function fsk_enable_burst_mode(fsk ::fsk_modem, nsym)
+        assert(fsk.fsk_C != C_NULL)
+        ccall(
+            (:fsk_enable_burst_mode,codec2_lib),
+            Void,
+            (Ptr{Void},Cint),
+            fsk.fsk_C,nsym)
+    end
+
+
     #This is a hack to extract a C-int value from the structure, as julia doesn't do c-struct-from-pointer
     function fsk_get_member(fsk ::fsk_modem,T,offset)
         assert(fsk.fsk_C != C_NULL)
@@ -222,5 +232,12 @@ module cfsk
         sampout
     end
 
-
+    function test_main()
+        mdm = fsk_create_hbr(48000,1200,10,4,1200,1200)
+        fsk_enable_burst_mode(mdm,44)
+        bits = [UInt8(x?1:0) for x in rand(Bool,88)]
+        samps = fsk_mod_c_frame(mdm,bits)
+        bitsout = fsk_demod_frame(mdm,samps)
+        return (bits,bitsout)
+    end
 end
