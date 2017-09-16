@@ -55,6 +55,9 @@ module ctdma
             (tdma_mode_settings,),
             mode
         )
+        if tdma_C == C_NULL
+            throw(ErrorException("Unknown problem creating TDMA modem"))
+        end
         modem = tdma_modem(tdma_C)
         finalizer(modem,tdma_destroy) #hook tdma_destroy into Julia's GC
         return modem
