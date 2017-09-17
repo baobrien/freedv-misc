@@ -45,7 +45,8 @@ module ctdma
     const FREEDV_4800T = tdma_mode_settings(2400,4,48000,48,44,2,1)
 
     type tdma_modem
-        tdma_C::Ptr{Void}
+        tdma_C ::Ptr{Void}
+        mode ::tdma_mode_settings
     end
 
     function tdma_create(mode ::tdma_mode_settings)
@@ -58,7 +59,7 @@ module ctdma
         if tdma_C == C_NULL
             throw(ErrorException("Unknown problem creating TDMA modem"))
         end
-        modem = tdma_modem(tdma_C)
+        modem = tdma_modem(tdma_C,mode)
         finalizer(modem,tdma_destroy) #hook tdma_destroy into Julia's GC
         return modem
     end
@@ -79,5 +80,34 @@ module ctdma
             (Ptr{Void},),
             tdma.tdma_C
         )
+    end
+
+    function tdma_rx(tdma ::tdma_modem,samps ::Array{Complex64,1}, timestamp ::Int64 )
+        Ts = tdma.mode.samp_rate / tdma.mode.sym_rate
+        slot_samps = tdma.mode.slot_size * Ts
+        assert( length(samps) == slot_samps )
+        ccall(
+            (:tdma_rx,codec2_lib),
+            Void,
+            (Ptr{Void},Ptr{Complex64},Int64),
+            tdma.tdma_C,
+            samps,
+            timestamp
+        )
+    end
+
+    function tdma_rx_abunch(tdma ::tdma_modem,samps ::Array{Complex64,1}, timestamp ::Int64)
+        Ts = div(tdma.mode.samp_rate, tdma.mode.sym_rate)
+        slot_samps = tdma.mode.slot_size * Ts
+        assert(length(samps)>0)
+        assert(length(samps)%slot_samps == 0)
+        chunks = div(length(samps),slot_samps)
+        ts = timestamp
+        for ii = 0:chunks-1
+            st = Int(ii*slot_samps)
+            en = Int((ii+1)*slot_samps)
+            tdma_rx(tdma,samps[st+1:en],ts)
+            ts+=slot_samps
+        end
     end
 end

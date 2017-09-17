@@ -114,7 +114,7 @@ module tdmasim
         
         #Frequency shift
         w = 2.*pi*xmtr.freq_offset/Float32(sim.config.samprate)
-        shift = exp(im*(1:nsyms*Ts)*w)
+        shift = exp.(im*(1:nsyms*Ts)*w)
 
         frame_bits = generate_frame_bits(sim,xmtr.master)
         samps = zeros(Complex{Float32},nslotsyms*Ts)
