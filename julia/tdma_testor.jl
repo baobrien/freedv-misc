@@ -33,15 +33,16 @@ module tdmatestor
 
     function main()
         srand(10)
-        nsets = 10 # Number of complete slot periods
+        nsets = 5 # Number of complete slot periods
 
         #Set up a modem
         modem = ctdma.tdma_create(ctdma.FREEDV_4800T)
 
         #Make some TDMA
         sim = tdmasim.tdma_sim_rand(tdmasim.config_4800T)
-        sim.xmitters[1].EbN0 = 10;
-        sim.xmitters[1].timing_offset = -30;
+        #sim.xmitters[1].EbN0 = -1;
+        sim.xmitters[1].timing_offset = -20;
+        sim.xmitters[2].timing_offset = 35;
         sim.xmitters[1].freq_offset = 1000;
         tdma_rf = tdmasim.tdma_sim_run(sim,nsets)
         #Demod some TDMA
