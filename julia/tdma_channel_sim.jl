@@ -118,11 +118,13 @@ module tdmasim
 
         frame_bits = generate_frame_bits(sim,xmtr.master)
         samps = zeros(Complex{Float32},nslotsyms*Ts)
-        fsk_sig = cfsk.fsk_mod_c(xmtr.fsk,frame_bits)
-        fsk_sig = fsk_sig .* shift
-        frame_offset = padding_samps+xmtr.timing_offset
-
-        samps[(1:Ts*nsyms)+frame_offset] = fsk_sig*EbN0_scale
+        if xmtr.enable
+            fsk_sig = cfsk.fsk_mod_c(xmtr.fsk,frame_bits)
+            fsk_sig = fsk_sig .* shift
+            frame_offset = padding_samps+xmtr.timing_offset
+    
+            samps[(1:Ts*nsyms)+frame_offset] = fsk_sig*EbN0_scale
+        end
         samps
     end
 

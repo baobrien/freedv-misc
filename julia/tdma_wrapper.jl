@@ -104,7 +104,7 @@ module ctdma
         Ts = div(tdma.mode.samp_rate, tdma.mode.sym_rate)
         slot_samps = tdma.mode.slot_size * Ts
         assert(length(samps)>0)
-        assert(length(samps)%slot_samps == 0)
+        #assert(length(samps)%slot_samps == 0)
         chunks = div(length(samps),slot_samps)
         ts = timestamp
         for ii = 0:chunks-1
