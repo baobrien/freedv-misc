@@ -44,9 +44,10 @@ module ctdma
         ps_tol      ::UInt32
         firs_tol    ::UInt32
         fras_tol    ::UInt32
+        baduw_tol   ::UInt32
     end
 
-    const FREEDV_4800T = tdma_mode_settings(2400,4,48000,48,44,2,1,16,4,4,4)
+    const FREEDV_4800T = tdma_mode_settings(2400,4,48000,48,44,2,1,16,4,2,2,2)
 
     type tdma_modem
         tdma_C ::Ptr{Void}

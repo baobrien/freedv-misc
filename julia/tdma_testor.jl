@@ -40,14 +40,20 @@ module tdmatestor
 
         #Make some TDMA
         sim = tdmasim.tdma_sim_rand(tdmasim.config_4800T)
-        #sim.xmitters[1].EbN0 = -1;
+        sim.xmitters[2].EbN0 = 2;
         sim.xmitters[1].timing_offset = -35;
         sim.xmitters[2].timing_offset = 35;
         sim.xmitters[1].freq_offset = 1000;
         sim.xmitters[1].enable = false;
         tdma_rf = tdmasim.tdma_sim_run(sim,nsets)
-        tdma_rf = [zeros(Complex64,100);tdma_rf]
+        n_start_noise = 10*48*2*5+40
+        start_noise = convert(Array{Float32},randn(n_start_noise)) + im*convert(Array{Float32},randn(n_start_noise))
+        tdma_rf = [start_noise;tdma_rf]
         #Demod some TDMA
         ctdma.tdma_rx_abunch(modem,tdma_rf,0)
+
+        outfile = open("out.cf32","w+")
+        write(outfile,tdma_rf)
+        close(outfile)
     end
 end
