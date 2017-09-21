@@ -1,4 +1,6 @@
 freetel-code
+build
+.vscode
 *.cf32
 *.fc32
 

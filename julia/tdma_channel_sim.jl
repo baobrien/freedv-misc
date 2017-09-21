@@ -90,6 +90,19 @@ module tdmasim
         uwoffset = div(nbits,2) - div(length(uw),2)
         #Insert UW
         bits[uwoffset+1:uwoffset+length(uw)] = uw
+        if master
+            bits[36] = 1
+        else
+            bits[36] = 0
+        end
+        for bit = bits
+            if bit==0
+                print("0")
+            else
+                print("1")
+            end
+        end
+        println("")
         return bits
     end
     

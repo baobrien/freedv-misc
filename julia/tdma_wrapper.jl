@@ -33,21 +33,23 @@ module ctdma
 
     #Wrapper around TDMA settings struct (struct TDMA_MODE_SETTINGS in tdma.h)
     type tdma_mode_settings
-        sym_rate    ::UInt32
-        fsk_m       ::UInt32
-        samp_rate   ::UInt32
-        slot_size   ::UInt32
-        frame_size  ::UInt32
-        n_slots     ::UInt32
-        frame_type  ::UInt32
-        uw_len      ::UInt32
-        ps_tol      ::UInt32
-        firs_tol    ::UInt32
-        fras_tol    ::UInt32
-        baduw_tol   ::UInt32
+        sym_rate            ::UInt32
+        fsk_m               ::UInt32
+        samp_rate           ::UInt32
+        slot_size           ::UInt32
+        frame_size          ::UInt32
+        n_slots             ::UInt32
+        frame_type          ::UInt32
+        uw_len              ::UInt32
+        pilot_sync_tol      ::UInt32
+        first_sync_tol      ::UInt32
+        frame_sync_tol      ::UInt32
+        baduw_tol           ::UInt32
+        mastersat_max       ::UInt32
+        mastersat_min       ::UInt32
     end
 
-    const FREEDV_4800T = tdma_mode_settings(2400,4,48000,48,44,2,1,16,4,2,2,2)
+    const FREEDV_4800T = tdma_mode_settings(2400,4,48000,48,44,2,1,16,4,2,2,2,4,2)
 
     type tdma_modem
         tdma_C ::Ptr{Void}
