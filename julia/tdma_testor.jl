@@ -44,11 +44,11 @@ module tdmatestor
         sim.xmitters[1].timing_offset = -35;
         sim.xmitters[2].timing_offset = 35;
         sim.xmitters[1].freq_offset = 1000;
-        sim.xmitters[1].master = true;
-        sim.xmitters[2].master = false;
+        #sim.xmitters[1].master = true;
+        sim.xmitters[2].master = true;
         #sim.xmitters[1].enable = false;
         tdma_rf = tdmasim.tdma_sim_run(sim,nsets)
-        n_start_noise = 200
+        n_start_noise = 100
         start_noise = convert(Array{Float32},randn(n_start_noise)) + im*convert(Array{Float32},randn(n_start_noise))
         tdma_rf = [start_noise;tdma_rf]
         #Demod some TDMA

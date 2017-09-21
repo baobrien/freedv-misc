@@ -95,14 +95,6 @@ module tdmasim
         else
             bits[36] = 0
         end
-        for bit = bits
-            if bit==0
-                print("0")
-            else
-                print("1")
-            end
-        end
-        println("")
         return bits
     end
     
