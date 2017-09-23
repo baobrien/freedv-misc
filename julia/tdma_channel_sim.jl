@@ -56,6 +56,7 @@ module tdmasim
     type TdmaSim
         xmitters ::Array{TdmaXmtr,1}
         config ::TdmaConfig
+        no_noise ::Bool
     end
 
     #FreeDV 4800T configuration
@@ -76,7 +77,7 @@ module tdmasim
                 cfsk.fsk_set_nsym(fsk,config.frame_syms);
                 TdmaXmtr(fsk,0,0.,0.,false,true))
                 ,1:config.slots),
-            config
+            config,false
         )
     end
 
@@ -157,12 +158,13 @@ module tdmasim
             end
         end
         
-        #make some noise
-        noise_i = convert(Array{Float32},randn(nsamps))
-        noise_r = convert(Array{Float32},randn(nsamps))
-        #Add constant noise to signal
-        sampbuf += (noise_r .+ noise_i .* im)
-
+        if !sim.no_noise
+            #make some noise
+            noise_i = convert(Array{Float32},randn(nsamps))
+            noise_r = convert(Array{Float32},randn(nsamps))
+            #Add constant noise to signal  
+            sampbuf += (noise_r .+ noise_i .* im)
+        end
         sampbuf
     end
 

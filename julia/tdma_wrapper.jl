@@ -102,7 +102,6 @@ module ctdma
             timestamp
         )
     end
-
     function tdma_rx_abunch(tdma ::tdma_modem,samps ::Array{Complex64,1}, timestamp ::Int64)
         Ts = div(tdma.mode.samp_rate, tdma.mode.sym_rate)
         slot_samps = tdma.mode.slot_size * Ts
@@ -117,4 +116,9 @@ module ctdma
             ts+=slot_samps
         end
     end
+    
+    #typedef void (*tdma_cb_rx_frame)(u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma, void * cb_data);
+    #function tdma_rx_callback(frame_bits ::Array{UInt8}, slot_i ::UInt32, slot ::Ptr{Void},tdma ::Ptr{Void}, cb_data ::Ptr{Void})
+        
+    #end
 end
