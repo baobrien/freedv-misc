@@ -50,9 +50,6 @@ void setupSineTable(){
     }
 }
 
-
-
-
 /* Callback typedef that just returns the bits of the frame */
 /* TODO: write this a bit better */
 //typedef void (*tdma_cb_rx_frame)(u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma, void * cb_data);
@@ -63,10 +60,29 @@ void setupSineTable(){
 //typedef int (*tdma_cb_tx_frame)(u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma, void * cb_data);
 
 /* Callback to the radio front end to schedule a burst of TX samples */
-//typedef int (*tdma_cb_tx_burst)(COMP* samples, size_t n_samples,i64 timestamp,void * cb_data);
+//typedef int (*tdma_cb_tx_burst)(tdma_t * tdma,COMP* samples, size_t n_samples,i64 timestamp,void * cb_data);
 
-int cb_tx_burst(COMP* samples, size_t n_samples,i64 timestamp,void * cb_data){
+typedef struct {
+    float complex *     tx_buffer;
+    bool                have_tx;
+    int64_t             tx_time;
+} tdma_stuff_holder;
 
+int cb_tx_frame (u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma, void * cb_data){
+    for(int i=0; i<88; i++){
+        frame_bits[i] = rand()&0x1;
+    }
+    return 1;
+}
+
+int cb_tx_burst(tdma_t * tdma,float complex* samples, size_t n_samples,i64 timestamp,void * cb_data){
+    tdma_stuff_holder * tx_stuff = (tdma_stuff_holder*) cb_data;
+    tx_stuff->have_tx = true;
+    tx_stuff->tx_time = timestamp;
+    for(int i = 0; i < tdma_nout(tdma); i++){
+        samples[i] = samples[i]*.45;
+    }
+    memcpy(tx_stuff->tx_buffer,samples,sizeof(float complex)*tdma_nout(tdma));
 }
 
 void cb_rx_frame(u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma, void * cb_data){
@@ -75,18 +91,6 @@ void cb_rx_frame(u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma, void *
 
 /* Chunks taken from https://github.com/pothosware/SoapySDR/wiki/C_API_Example */
 int main(int argc,char ** argv){
-    size_t length;
-    SoapySDRKwargs *results = SoapySDRDevice_enumerate(NULL,&length);
-    for (size_t i = 0; i < length; i++)
-    {
-        printf("Found device #%d: ", (int)i);
-        for (size_t j = 0; j < results[i].size; j++)
-        {
-            printf("%s=%s, ", results[i].keys[j], results[i].vals[j]);
-        }
-        printf("\n");
-    }
-    SoapySDRKwargsList_clear(results, length);
 
     setupSineTable();
     //create device instance
@@ -101,31 +105,16 @@ int main(int argc,char ** argv){
         return EXIT_FAILURE;
     }
 
-    //query device info
-    char** names = SoapySDRDevice_listAntennas(sdr, SOAPY_SDR_RX, 0, &length);
-    printf("Rx antennas: ");
-    for (size_t i = 0; i < length; i++) printf("%s, ", names[i]);
-    printf("\n");
-    SoapySDRStrings_clear(&names, length);
-
-    names = SoapySDRDevice_listGains(sdr, SOAPY_SDR_RX, 0, &length);
-    printf("Rx gains: ");
-    for (size_t i = 0; i < length; i++) printf("%s, ", names[i]);
-    printf("\n");
-    SoapySDRStrings_clear(&names, length);
-
-    SoapySDRRange *ranges = SoapySDRDevice_getFrequencyRange(sdr, SOAPY_SDR_RX, 0, &length);
-    printf("Rx freq ranges: ");
-    for (size_t i = 0; i < length; i++) printf("[%g Hz -> %g Hz], ", ranges[i].minimum, ranges[i].maximum);
-    printf("\n");
-    free(ranges);
-
+    SoapySDRKwargs args2 = {};
+    SoapySDRKwargs_set(&args2,"buffers","64");
     struct TDMA_MODE_SETTINGS mode = FREEDV_4800T;
     tdma_t * tdma = tdma_create(mode);
     tdma_set_rx_cb(tdma,cb_rx_frame,NULL);
-    tdma_set_tx_burst_cb(tdma,cb_tx_burst,NULL);
+    tdma_set_tx_cb(tdma,cb_tx_frame,NULL);
+    tdma->tx_multislot_delay = 3;
 
     int nin = tdma_nin(tdma);
+    int nout = tdma_nout(tdma);
     float Fs_tdma = (float)mode.samp_rate;
     double Fs_bb = 960e3;
     double Fc = 445e6;
@@ -133,44 +122,27 @@ int main(int argc,char ** argv){
     //float rs_ratio = Fs_bb / Fs_tdma;
     int rrs_ratio = 20;
     int nin_bb = nin*rrs_ratio;
+    int nout_bb = nout*rrs_ratio;
 
     nco_crcf downmixer = nco_crcf_create(LIQUID_NCO);
     nco_crcf upmixer = nco_crcf_create(LIQUID_NCO);
     nco_crcf_set_phase(downmixer, 0.0f);
     nco_crcf_set_phase(upmixer, 0.0f);
     nco_crcf_set_frequency(downmixer,2.*M_PI*(band_shift/Fs_bb));
-    nco_crcf_set_frequency(upmixer,band_shift/Fs_bb);
+    nco_crcf_set_frequency(upmixer,2.*M_PI*(band_shift/Fs_bb));
     int decim_len = 21;
+
+    tdma_stuff_holder tx_stuff;
+    tx_stuff.tx_buffer = malloc(sizeof(complex float)*nout);
+    tx_stuff.have_tx = false;
+    tx_stuff.tx_time = 0;
+
+    tdma_set_tx_burst_cb(tdma,cb_tx_burst,(void*)&tx_stuff);
 
     //float filter_taps[decim_len]
     //firdecim_crcf decim_filter = firdecim_crcf_create_prototype(rrs_ratio,20,50);
     msresamp_crcf decim_filter = msresamp_crcf_create(1.0/((float)rrs_ratio),50.0f);
-
-    size_t channels = SoapySDRDevice_getNumChannels(sdr,SOAPY_SDR_RX);
-    printf("RX channels: %d\n",channels);
-    channels = SoapySDRDevice_getNumChannels(sdr,SOAPY_SDR_TX);
-    printf("TX channels: %d\n",channels);
-
-    SoapySDRKwargs channelInfo = SoapySDRDevice_getChannelInfo(sdr,SOAPY_SDR_RX,0);
-    printf("RX Stream Info: ");
-    for(size_t i = 0; i < channelInfo.size; i++){
-        printf("%s=%s, ", channelInfo.keys[i], channelInfo.vals[i]);
-    }
-    printf("\n");
-
-    channelInfo = SoapySDRDevice_getChannelInfo(sdr,SOAPY_SDR_TX,0);
-    printf("TX Stream Info: ");
-    for(size_t i = 0; i < channelInfo.size; i++){
-        printf("%s=%s, ", channelInfo.keys[i], channelInfo.vals[i]);
-    }
-    printf("\n");
-
-    bool fdx = SoapySDRDevice_getFullDuplex(sdr,SOAPY_SDR_TX,0);
-    if(fdx) printf("Is FDX in TX direction\n");
-    else    printf("Is not FDX in TX\n");
-    fdx = SoapySDRDevice_getFullDuplex(sdr,SOAPY_SDR_RX,0);
-    if(fdx) printf("Is FDX in RX direction\n");
-    else    printf("Is not FDX in RX\n");
+    msresamp_crcf interp_filter = msresamp_crcf_create((float)rrs_ratio,50.0f);
 
     //apply settings
     if (SoapySDRDevice_setSampleRate(sdr, SOAPY_SDR_TX, 0, Fs_bb) != 0)
@@ -208,7 +180,7 @@ int main(int argc,char ** argv){
         printf("setupStream fail: %s\n", SoapySDRDevice_lastError());
     }
 
-    if (SoapySDRDevice_setupStream(sdr, &txStream, SOAPY_SDR_TX, SOAPY_SDR_CF32, NULL, 0, NULL) != 0)
+    if (SoapySDRDevice_setupStream(sdr, &txStream, SOAPY_SDR_TX, SOAPY_SDR_CF32, NULL, 0, &args2) != 0)
     {
         printf("setupStream fail: %s\n", SoapySDRDevice_lastError());
     }
@@ -226,15 +198,17 @@ int main(int argc,char ** argv){
     long long timeNsStart;
     size_t bursts = 0;
     printf("Running\n");
-    FILE * sampfile = fopen("samps.cf32","w+");
-    for(size_t i = 0; bursts<30; i++){
+    bool tx_started = false;
+    int mtu_tx = SoapySDRDevice_getStreamMTU(sdr, txStream);
+    //FILE * sampfile = fopen("samps.cf32","w+");
+    for(size_t i = 0; bursts<3000; i++){
         int nsamp = 0;
         int num_written_decim = 0;
         flags=0;
         bool first_loop = true;
         while(nsamp < nin_bb){
-            void *buffs[] = { &slot_bbrx_buffer[nsamp] }; //array of rx buffers
-            int ret = SoapySDRDevice_readStream(sdr, rxStream, buffs, nin_bb - nsamp, &flags, &timeNs, 100000);
+            void *rx_buffs[] = { &slot_bbrx_buffer[nsamp] }; //array of rx buffers
+            int ret = SoapySDRDevice_readStream(sdr, rxStream, rx_buffs, nin_bb - nsamp, &flags, &timeNs, 100000);
             if(first_loop) timeNsStart = timeNs;
             first_loop = false;
             //printf("RX ret=%d, flags=%d, timeNs=%lld burstNs=%lld, nsamp=%d\n", ret, flags, timeNs, burstTimeNs,nsamp);
@@ -245,6 +219,7 @@ int main(int argc,char ** argv){
             nsamp += ret;
 
         }
+        bursts++;
         /*  Mix and downsample */
         nco_crcf_mix_block_down(downmixer,slot_bbrx_buffer,slot_bbrx_buffer_dm,nin_bb);
         //msresamp_crcf_decim_execute(decim_filter,slot_bbrx_buffer_dm,nin_bb,slot_rx_buffer,&num_written_decim);
@@ -255,24 +230,44 @@ int main(int argc,char ** argv){
         tdma_rx(tdma,slot_rx_buffer,ts_48k);
 
         //fwrite(slot_bbrx_buffer_dm,sizeof(complex float),nin_bb,sampfile);
-        fwrite(slot_rx_buffer,sizeof(complex float),nin,sampfile);
+        //fwrite(slot_rx_buffer,sizeof(complex float),nin,sampfile);
 
-        if(burstTimeNs == 0){
-            burstTimeNs = timeNs;
+        if(bursts>120 && !tx_started){
+            printf("Starting TX\n");
+            tdma_start_tx(tdma,1);
+            tx_started = true;
         }
-        if(timeNs > burstTimeNs){
-            void *tb1[] = {sine};
-            void *tb2[] = {zeros};
-            flags=SOAPY_SDR_END_BURST;
-            //int ret = SoapySDRDevice_writeStream(sdr,txStream,tb1,8192,&flags,burstTimeNs+10e6,100000);
-            //printf(">>>>TX ret=%d, flags=%d, timeNs=%lld\n", ret, flags, burstTimeNs);
-            //ret = SoapySDRDevice_writeStream(sdr,txStream,tb2,4096,&flags,burstTimeNs+10e6,100000);
-            //printf(">>>>TX ret=%d, flags=%d, timeNs=%lld\n", ret, flags, burstTimeNs);
-            burstTimeNs += 200e6;
-            bursts++;
+        
+        if(tx_stuff.have_tx){
+            msresamp_crcf_execute(interp_filter,tx_stuff.tx_buffer,nout,slot_bbrx_buffer_dm,&num_written_decim);
+            nco_crcf_mix_block_up(upmixer,slot_bbrx_buffer_dm,slot_bbrx_buffer,nout_bb);
+            i64 ts_ns = (tx_stuff.tx_time*62500)/3;
+            i64 dts_ns = 0;
+            int ret = 0;
+            nsamp = 0;
+            while(nsamp < nout_bb){
+                void *tx_buffs[] = { &slot_bbrx_buffer[nsamp] };
+                void *rx_buffs[] = { &slot_bbrx_buffer_dm[0] };
+                flags = SOAPY_SDR_END_BURST;
+                if(nsamp==0) flags |= SOAPY_SDR_HAS_TIME;
+                ret = SoapySDRDevice_writeStream(sdr, txStream, tx_buffs, (nout_bb - nsamp), &flags, ts_ns+10e6,100000);
+                      //SoapySDRDevice_readStream(sdr, rxStream, rx_buffs, nin_bb - nsamp, &flags, &timeNs, 100000);
+                
+                if( ret < 0 ) {
+                    printf("err: %s\n",SoapySDRDevice_lastError());
+                    break;
+                }
+                dts_ns = (nsamp*62500)/3;
+                nsamp += ret;
+            }
+            void *tx_buffs[] = { &zeros[0] };
+            flags = SOAPY_SDR_END_BURST;
+            //SoapySDRDevice_writeStream(sdr, txStream, tx_buffs, 4096, &flags, ts_ns+dts_ns+100e6,100000);
+            tx_stuff.have_tx = false;
         }
+        
     }
-    fclose(sampfile);
+   // fclose(sampfile);
 
     //shutdown the stream
     SoapySDRDevice_deactivateStream(sdr, rxStream, 0, 0); //stop streaming
@@ -281,9 +276,14 @@ int main(int argc,char ** argv){
     SoapySDRDevice_deactivateStream(sdr, txStream, 0, 0); //stop streaming
     SoapySDRDevice_closeStream(sdr, txStream);
 
-
     //cleanup device handle
     SoapySDRDevice_unmake(sdr);
+
+    tdma_destroy(tdma);
+    nco_crcf_destroy(downmixer);
+    nco_crcf_destroy(upmixer);
+    msresamp_crcf_destroy(decim_filter);
+
     printf("Done\n");
     return EXIT_SUCCESS;
 

@@ -125,7 +125,7 @@ int main(int argc,char ** argv){
     {
         printf("setSampleRate fail: %s\n", SoapySDRDevice_lastError());
     }
-    if (SoapySDRDevice_setFrequency(sdr, SOAPY_SDR_TX, 0, 450e6, NULL) != 0)
+    if (SoapySDRDevice_setFrequency(sdr, SOAPY_SDR_TX, 0, 446e6, NULL) != 0)
     {
         printf("setFrequency fail: %s\n", SoapySDRDevice_lastError());
     }
@@ -133,7 +133,7 @@ int main(int argc,char ** argv){
     {
         printf("setSampleRate fail: %s\n", SoapySDRDevice_lastError());
     }
-    if (SoapySDRDevice_setFrequency(sdr, SOAPY_SDR_RX, 0, 450e6, NULL) != 0)
+    if (SoapySDRDevice_setFrequency(sdr, SOAPY_SDR_RX, 0, 446e6, NULL) != 0)
     {
         printf("setFrequency fail: %s\n", SoapySDRDevice_lastError());
     }
