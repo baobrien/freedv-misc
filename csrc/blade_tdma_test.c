@@ -105,8 +105,6 @@ int main(int argc,char ** argv){
         return EXIT_FAILURE;
     }
 
-    SoapySDRKwargs args2 = {};
-    SoapySDRKwargs_set(&args2,"buffers","64");
     struct TDMA_MODE_SETTINGS mode = FREEDV_4800T;
     tdma_t * tdma = tdma_create(mode);
     tdma_set_rx_cb(tdma,cb_rx_frame,NULL);
@@ -277,86 +275,7 @@ int main(int argc,char ** argv){
         tdma_rx(tdma,slot_rx_buffer,ts_rx_48k);
     }
 
-    /*
-    int flags; //flags set by receive operation
-    long long timeNs; //timestamp for receive buffer
-    long long burstTimeNs = 0;
-    long long timeNsStart;
-    size_t bursts = 0;
-    printf("Running\n");
-    bool tx_started = false;
-    int mtu_tx = SoapySDRDevice_getStreamMTU(sdr, txStream);
-    //FILE * sampfile = fopen("samps.cf32","w+");
-    for(size_t i = 0; bursts<3000; i++){
-        int nsamp = 0;
-        int num_written_decim = 0;
-        flags=0;
-        bool first_loop = true;
-        while(nsamp < nin_bb){
-            void *rx_buffs[] = { &slot_bbrx_buffer[nsamp] }; //array of rx buffers
-            int ret = SoapySDRDevice_readStream(sdr, rxStream, rx_buffs, nin_bb - nsamp, &flags, &timeNs, 100000);
-            if(first_loop) timeNsStart = timeNs;
-            first_loop = false;
-            //printf("RX ret=%d, flags=%d, timeNs=%lld burstNs=%lld, nsamp=%d\n", ret, flags, timeNs, burstTimeNs,nsamp);
-            if(ret < 0) {
-                printf("err: %d\n",ret);
-                break;
-            }
-            nsamp += ret;
 
-        }
-        bursts++;
-
-        nco_crcf_mix_block_down(downmixer,slot_bbrx_buffer,slot_bbrx_buffer_dm,nin_bb);
-        //msresamp_crcf_decim_execute(decim_filter,slot_bbrx_buffer_dm,nin_bb,slot_rx_buffer,&num_written_decim);
-        msresamp_crcf_execute(decim_filter,slot_bbrx_buffer_dm,nin_bb,slot_rx_buffer,&num_written_decim);
-
-        i64 ts_48k = (timeNsStart*3)/62500;
-
-        tdma_rx(tdma,slot_rx_buffer,ts_48k);
-
-        //fwrite(slot_bbrx_buffer_dm,sizeof(complex float),nin_bb,sampfile);
-        //fwrite(slot_rx_buffer,sizeof(complex float),nin,sampfile);
-
-        if(bursts>120 && !tx_started){
-            printf("Starting TX\n");
-            tdma_start_tx(tdma,1);
-            //tdma_start_tx(tdma,0);
-            tx_started = true;
-        }
-        
-        if(tx_stuff.have_tx){
-            msresamp_crcf_execute(interp_filter,tx_stuff.tx_buffer,nout,slot_bbrx_buffer_dm,&num_written_decim);
-            nco_crcf_mix_block_up(upmixer,slot_bbrx_buffer_dm,slot_bbrx_buffer,nout_bb);
-            i64 ts_ns = (tx_stuff.tx_time*62500)/3;
-            i64 dts_ns = 0;
-            int ret = 0;
-            nsamp = 0;
-            while(nsamp < nout_bb){
-                void *tx_buffs[] = { &slot_bbrx_buffer[nsamp] };
-                void *rx_buffs[] = { &slot_bbrx_buffer_dm[0] };
-                flags = SOAPY_SDR_END_BURST;
-                if(nsamp==0) flags |= SOAPY_SDR_HAS_TIME;
-                ret = SoapySDRDevice_writeStream(sdr, txStream, tx_buffs, (nout_bb - nsamp), &flags, ts_ns+10e6,100000);
-                      //SoapySDRDevice_readStream(sdr, rxStream, rx_buffs, nin_bb - nsamp, &flags, &timeNs, 100000);
-                
-                if( ret < 0 ) {
-                    printf("err: %d\n",ret);
-                    break;
-                }
-                dts_ns = (nsamp*62500)/3;
-                nsamp += ret;
-            }
-            void *tx_buffs[] = { &zeros[0] };
-            flags = SOAPY_SDR_END_BURST;
-            //SoapySDRDevice_writeStream(sdr, txStream, tx_buffs, 4096, &flags, ts_ns+dts_ns+100e6,100000);
-            tx_stuff.have_tx = false;
-        }
-        
-    }
-   // fclose(sampfile);
-
-   */
     //shutdown the stream
     SoapySDRDevice_deactivateStream(sdr, rxStream, 0, 0); //stop streaming
     SoapySDRDevice_closeStream(sdr, rxStream);
