@@ -46,10 +46,10 @@ module tdmatestor
         sim.xmitters[1].freq_offset = 1000;
         sim.xmitters[1].master = true;
         sim.xmitters[2].master = false;
-        #sim.xmitters[2].enable = false;
-        #sim.xmitters[1].enable = false;
+        sim.xmitters[2].enable = false;
+        sim.xmitters[1].enable = false;
         tdma_rf_1 = tdmasim.tdma_sim_run(sim,6)
-        sim.xmitters[1].enable = true;
+        #sim.xmitters[1].enable = true;
         tdma_rf_2 = tdmasim.tdma_sim_run(sim,nsets-6)
 
         n_start_noise = 300
