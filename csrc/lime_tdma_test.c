@@ -72,6 +72,7 @@ int cb_tx_frame (u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma, void *
     for(int i=0; i<88; i++){
         frame_bits[i] = rand()&0x1;
     }
+    frame_bits[35] = 0;
     return 1;
 }
 
@@ -80,7 +81,7 @@ int cb_tx_burst(tdma_t * tdma,float complex* samples, size_t n_samples,i64 times
     tx_stuff->have_tx = true;
     tx_stuff->tx_time = timestamp;
     for(int i = 0; i < tdma_nout(tdma); i++){
-        samples[i] = samples[i]*.45;
+        samples[i] = samples[i]*.6;
     }
     memcpy(tx_stuff->tx_buffer,samples,sizeof(float complex)*tdma_nout(tdma));
 }
@@ -96,7 +97,7 @@ int main(int argc,char ** argv){
     //create device instance
     //args can be user defined or from the enumeration result
     SoapySDRKwargs args = {};
-    SoapySDRKwargs_set(&args, "driver", "bladerf");
+    SoapySDRKwargs_set(&args, "driver", "lime");
     SoapySDRDevice *sdr = SoapySDRDevice_make(&args);
     SoapySDRKwargs_clear(&args);
     if (sdr == NULL)
@@ -160,15 +161,21 @@ int main(int argc,char ** argv){
         printf("setFrequency fail: %s\n", SoapySDRDevice_lastError());
     }
 
-    if(SoapySDRDevice_setGainElement(sdr,SOAPY_SDR_RX,0,"LNA",3) != 0)
+    /*if(SoapySDRDevice_setGainElement(sdr,SOAPY_SDR_RX,0,"LNA",3) != 0)
         printf("setGainElement fail: %d\n",SoapySDRDevice_lastError());
 
-
-    if(SoapySDRDevice_setGainElement(sdr,SOAPY_SDR_RX,0,"VGA1",18) != 0)
+    */
+    if(SoapySDRDevice_setGainElement(sdr,SOAPY_SDR_TX,0,"PAD",18) != 0)
         printf("setGainElement fail: %d\n",SoapySDRDevice_lastError());
 
-    if(SoapySDRDevice_setGainElement(sdr,SOAPY_SDR_RX,0,"VGA2",16) != 0)
+    if(SoapySDRDevice_setGainElement(sdr,SOAPY_SDR_RX,0,"IAMP",16) != 0)
         printf("setGainElement fail: %d\n",SoapySDRDevice_lastError());
+
+    if(SoapySDRDevice_setAntenna(sdr,SOAPY_SDR_TX,0,"BAND1"))
+        printf(">>> failed to set tx antenna\n");
+
+    if(SoapySDRDevice_setAntenna(sdr,SOAPY_SDR_RX,0,"LNAL"))
+        printf(">>> failed to set rx antenna\n");
 
     //setup a stream (complex floats)
     SoapySDRStream *rxStream;
@@ -182,6 +189,8 @@ int main(int argc,char ** argv){
     {
         printf("setupStream fail: %s\n", SoapySDRDevice_lastError());
     }
+
+
     //if(SoapySDRDevice_setupStream())
 
     SoapySDRDevice_activateStream(sdr, txStream, 0,0,0);    
@@ -211,10 +220,10 @@ int main(int argc,char ** argv){
 
     bool tx_started = false;
     printf("Running\n");
-    tdma_start_tx(tdma,0);
-    tdma->state = master_sync;
     for(size_t i = 0; i<30000; i++){
-       /* if(i>200 && !tx_started){
+        if(i>200 && !tx_started){
+            //tdma_start_tx(tdma,1);
+            //tx_started = true;
             if(tdma_get_slot(tdma,0)->state == rx_sync){
                 tdma_start_tx(tdma,1);
                 tx_started = true;
@@ -225,7 +234,7 @@ int main(int argc,char ** argv){
                 printf("Starting TX, slot 0\n");
             }
             //tdma_start_tx(tdma,0);
-        }*/
+        }
 
         /* If we have TX frame, upconvert for radio */
         if(tx_stuff.have_tx){
