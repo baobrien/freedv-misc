@@ -33,10 +33,10 @@
 #include "tdma.h"
 
 enum tdma_tester_mode{
-    tester_master,
-    tester_rxonly,
-    tester_repeater,
-    
+    tester_master,    //Tester operates as master
+    tester_rxonly,    //Tester RXes only
+    tester_repeater,  //Tester repeates frames
+    tester_septx      
 };
 
 struct tdma_test_framer {

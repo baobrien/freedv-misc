@@ -32,3 +32,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <liquid/liquid.h>
+#include "soapy_tdma.h"
+
+soapy_tdma_radio_t * soapy_tdma_create(SoapySDRDevice * sdr,
+                                        tdma_t * tdma, double f_offset,int * err,bool rx_only){
+    
+    soapy_tdma_radio_t * radio = malloc(sizeof(soapy_tdma_radio_t));
+    
+    if(SoapySDRDevice_setupStream(sdr, radio->rx_stream, ))
+}

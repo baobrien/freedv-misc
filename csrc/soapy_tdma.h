@@ -45,9 +45,21 @@ typedef struct {
     nco_crcf downmixer;
     nco_crcf upmixer;
 
-    double radio_fs;                /* Radio sample rate */
-    size_t tx_mtu;                  /* MTU of tx stream */
+
+
+    double radio_fs;                /* SDR sample rate */
+    double radio_fc;                /* SDR center frequency */
+    double shift;                   /* Frequency shift */
+    size_t mtu;                     /* MTU of tx stream */
+
+    /* TX stuff */
+    float complex * tx_buf_bb;
+    uint64_t tx_time;
+    bool tx_ready;
     
 } soapy_tdma_radio_t;
+
+soapy_tdma_radio_t * soapy_tdma_create(SoapySDRDevice * sdr,tdma_t * tdma, double f_offset,int * err, bool rx_only);
+int soapy_tdma_loop();
 
 #endif
