@@ -31,13 +31,56 @@
 #include <tdma.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <math.h>
 #include <liquid/liquid.h>
 #include "soapy_tdma.h"
 
 soapy_tdma_radio_t * soapy_tdma_create(SoapySDRDevice * sdr,
-                                        tdma_t * tdma, double f_offset,int * err,bool rx_only){
+                                        tdma_t * tdma, float shift,int * err,bool rx_only){
     
+    /* TODO malloc null checking and cleanup */
     soapy_tdma_radio_t * radio = malloc(sizeof(soapy_tdma_radio_t));
     
-    if(SoapySDRDevice_setupStream(sdr, radio->rx_stream, ))
+    radio->sdr = sdr;
+    radio->shift = shift;
+
+    if(SoapySDRDevice_setupStream(sdr, radio->rx_stream, SOAPY_SDR_RX, SOAPY_SDR_CF32, NULL, 0, NULL)){
+      err = -1;
+      goto soapy_tdma_create_err;
+    }
+
+    size_t mtu = SoapySDRDevice_getStreamMTU(sdr, radio->rx_stream);
+    radio->mtu = mtu;
+    /* Get sample rates; make sure radio rate is divisible by tdma rate */
+    float Fs_sdr = SoapySDRDevice_getSampleRate(sdr, SOAPY_SDR_RX, 0);
+
+    float Fs_bb = tdma->settings.samp_rate;
+    float Fs_dr = fmodf(Fs_sdr,Fs_bb);  
+    if( Fs_dr > .01 ){
+      err = -1;
+      goto soapy_tdma_create_err;
+    }
+
+    float R = Fs_sdr/Fs_bb;
+    float filtDb = 60;
+
+    
+    nco_crcf downmixer = nco_crcf_create(LIQUID_NCO);
+    nco_crcf upmixer = nco_crcf_create(LIQUID_NCO);
+    nco_crcf_set_phase(downmixer, 0.0f);
+    nco_crcf_set_phase(upmixer, 0.0f);
+    nco_crcf_set_frequency(downmixer,2.*M_PI*(shift/Fs_sdr));
+    nco_crcf_set_frequency(upmixer,2.*M_PI*(shift/Fs_sdr));
+
+    msresamp_crcf decim  = msresamp_crcf_create(1.0/((float)R),filtDb);
+    msresamp_crcf interp = msresamp_crcf_create(((float)R),filtDb);
+
+    radio->decim = decim;
+    radio->interp = interp;
+    radio->downmixer = downmixer;
+    radio->upmixer = upmixer;
+    radio->rx_only_mode = rx_only;
+
+    soapy_tdma_create_err:
+    return NULL;
 }

@@ -47,9 +47,9 @@ typedef struct {
 
 
 
-    double radio_fs;                /* SDR sample rate */
-    double radio_fc;                /* SDR center frequency */
-    double shift;                   /* Frequency shift */
+    float radio_fs;                /* SDR sample rate */
+    float radio_fc;                /* SDR center frequency */
+    float shift;                   /* Frequency shift */
     size_t mtu;                     /* MTU of tx stream */
 
     /* TX stuff */
@@ -59,7 +59,9 @@ typedef struct {
     
 } soapy_tdma_radio_t;
 
-soapy_tdma_radio_t * soapy_tdma_create(SoapySDRDevice * sdr,tdma_t * tdma, double f_offset,int * err, bool rx_only);
-int soapy_tdma_loop();
+soapy_tdma_radio_t * soapy_tdma_create(SoapySDRDevice * sdr,tdma_t * tdma, float shift,int * err, bool rx_only);
+int soapy_tdma_start_streams(soapy_tdma_radio_t * radio);
+int soapy_tdma_stop_streams(soapy_tdma_radio_t * radio);
+int soapy_tdma_loop(soapy_tdma_radio_t * radio);
 
 #endif
