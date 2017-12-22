@@ -35,9 +35,20 @@
 #include "soapy_tdma.h"
 
 soapy_tdma_radio_t * soapy_tdma_create(SoapySDRDevice * sdr,
-                                        tdma_t * tdma, double f_offset,int * err,bool rx_only){
+                                        tdma_t * tdma, double f_offset,bool rx_only, int * err){
     
     soapy_tdma_radio_t * radio = malloc(sizeof(soapy_tdma_radio_t));
-    
-    if(SoapySDRDevice_setupStream(sdr, radio->rx_stream, ))
+    radio->sdr = sdr;
+
+    /* Open RX stream */
+    if(SoapySDRDevice_setupStream(sdr, &radio->rx_stream, SOAPY_SDR_RX, SOAPY_SDR_CF32, NULL, 0, NULL)){
+        err = 1;
+        goto soapy_tdma_create_error;
+    }
+
+    /* Figure out radio settings */
+    radio->mtu = SoapySDRDevice_getStreamMTU(sdr, radio->rx_stream);
+
+    soapy_tdma_create_error:
+    return NULL;
 }
