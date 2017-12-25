@@ -17,7 +17,7 @@ target_include_directories(tdma_bladerf PUBLIC freetel-code/codec2-dev/build_lin
 find_library(CODEC2_LIB codec2)
 target_link_libraries(tdma_bladerf SoapySDR liquid m codec2)
 
-add_executable(tdma_lime csrc/lime_tdma_test.c freetel-code/codec2-dev/src/tdma.h)
+add_executable(tdma_lime csrc/lime_tdma_test.c csrc/tdma_testframer.h csrc/tdma_testframer.c freetel-code/codec2-dev/src/tdma.h)
 target_include_directories(tdma_lime PUBLIC freetel-code/codec2-dev/build_linux/src freetel-code/codec2-dev/src/ /usr/local/lib/)
 
-target_link_libraries(tdma_lime SoapySDR liquid m codec2)
+target_link_libraries(tdma_lime SoapySDR liquid m codec2 jansson)

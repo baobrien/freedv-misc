@@ -1,0 +1,25 @@
+{
+    "radio":{
+        "driver":"lime"
+    },
+    "rx_gains":{
+        "IAMP":16
+    },
+    "tx_gains":{
+        "PAD":18
+    },
+    "rx_antenna":"LNAL",
+    "tx_antenna":"BAND1",
+    "samp_rate":960000,
+    "rf_freq":445e6,
+    "bb_shift":45e3,
+    "sdr_tx_enable":false,
+
+    "testor_settings":{
+        "test_tx_enable":true,
+        "test_tx_master":false,
+        "test_tx_repeater":false,
+        "test_rx_print":true,
+        "test_station_id":100
+    }
+}

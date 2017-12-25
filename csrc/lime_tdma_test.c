@@ -33,48 +33,16 @@
 #include <math.h>
 #include <stdbool.h>
 #include <tdma.h>
+#include <jansson.h>
 #include <liquid/liquid.h>
 
-#define N_SINE 100000
-static float complex sine[N_SINE];
-static float complex zeros[N_SINE];
-
-void setupSineTable(){
-    float Fs = 1e6;
-    float F1 = 200e3;
-    float w = 2*M_PI*(F1/Fs);
-    for(size_t i = 0; i<N_SINE; i++){
-        sine[i] = ccosf(i*w);
-        sine[i] += csinf(i*w)*_Complex_I;
-        zeros[i] = 0;
-    }
-}
-
-/* Callback typedef that just returns the bits of the frame */
-/* TODO: write this a bit better */
-//typedef void (*tdma_cb_rx_frame)(u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma, void * cb_data);
-
-/* Callback typedef when TDMA is ready to schedule a new frame */
-/* Returns 1 if a frame is supplied, 0 if not */
-/* If no frame supplied, slot is changed out of TX mode */
-//typedef int (*tdma_cb_tx_frame)(u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma, void * cb_data);
-
-/* Callback to the radio front end to schedule a burst of TX samples */
-//typedef int (*tdma_cb_tx_burst)(tdma_t * tdma,COMP* samples, size_t n_samples,i64 timestamp,void * cb_data);
+#include "tdma_testframer.h"
 
 typedef struct {
     float complex *     tx_buffer;
     bool                have_tx;
     int64_t             tx_time;
 } tdma_stuff_holder;
-
-int cb_tx_frame (u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma, void * cb_data){
-    for(int i=0; i<88; i++){
-        frame_bits[i] = rand()&0x1;
-    }
-    frame_bits[35] = 0;
-    return 1;
-}
 
 int cb_tx_burst(tdma_t * tdma,float complex* samples, size_t n_samples,i64 timestamp,void * cb_data){
     tdma_stuff_holder * tx_stuff = (tdma_stuff_holder*) cb_data;
@@ -86,18 +54,52 @@ int cb_tx_burst(tdma_t * tdma,float complex* samples, size_t n_samples,i64 times
     memcpy(tx_stuff->tx_buffer,samples,sizeof(float complex)*tdma_nout(tdma));
 }
 
-void cb_rx_frame(u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma, void * cb_data){
-    printf("Valid frame, slot %d, master %d\n",slot_i,slot->master_count);
+static void json_error(json_error_t * err){
+    fprintf(stderr,"Json Error line %d: %s \n",err->line,err->text);
 }
 
-/* Chunks taken from https://github.com/pothosware/SoapySDR/wiki/C_API_Example */
+/* like Jansson's json_is_true, but with null check */
+inline static bool json_is_true_nc(json_t * v){
+    if(v == NULL) return false;
+    return json_is_true(v);
+}
+
 int main(int argc,char ** argv){
 
-    setupSineTable();
-    //create device instance
-    //args can be user defined or from the enumeration result
+    char* config_filename;
+    if(argc<2){
+        config_filename = "radio_conf.json";
+    }else{
+        config_filename = argv[1];
+    }
+
+    json_error_t json_err;
+    json_t * config_json = json_load_file(config_filename,0,&json_err);
+
+    if(config_json == NULL){
+        fprintf(stderr,"Couldn't open or decode %s\n",config_filename);
+        json_error(&json_err);
+        return EXIT_FAILURE;
+    }
+
+    json_t * rc_json = json_object_get(config_json,"radio");
+    if(rc_json == NULL){
+        fprintf(stderr,"Couldn't find radio parameter in config\n");
+        return EXIT_FAILURE;
+    }
+
+
     SoapySDRKwargs args = {};
-    SoapySDRKwargs_set(&args, "driver", "lime");
+
+    char * json_key;
+    json_t * json_val;
+    json_object_foreach(rc_json,json_key,json_val){
+        char * val = json_string_value(json_val);
+        if(val != NULL){
+            SoapySDRKwargs_set(&args,json_key,val);
+        }
+    }
+
     SoapySDRDevice *sdr = SoapySDRDevice_make(&args);
     SoapySDRKwargs_clear(&args);
     if (sdr == NULL)
@@ -106,20 +108,27 @@ int main(int argc,char ** argv){
         return EXIT_FAILURE;
     }
 
+    double Fs_bb =      json_number_value(json_object_get(config_json,"samp_rate"));
+    double Fc =         json_number_value(json_object_get(config_json,"rf_freq"));
+    double band_shift = json_number_value(json_object_get(config_json,"bb_shift"));
+
+    bool enable_tx = json_is_true_nc(json_object_get(config_json,"sdr_tx_enable"));
+
     struct TDMA_MODE_SETTINGS mode = FREEDV_4800T;
     tdma_t * tdma = tdma_create(mode);
-    tdma_set_rx_cb(tdma,cb_rx_frame,NULL);
-    tdma_set_tx_cb(tdma,cb_tx_frame,NULL);
+    //tdma_set_rx_cb(tdma,cb_rx_frame,NULL);
+    //tdma_set_tx_cb(tdma,cb_tx_frame,NULL);
     tdma->tx_multislot_delay = 3;
+
+    tdma_test_framer * ttf = ttf_create(tdma);
+    ttf->print_enable = true;
 
     int nin = tdma_nin(tdma);
     int nout = tdma_nout(tdma);
     float Fs_tdma = (float)mode.samp_rate;
-    double Fs_bb = 960e3;
-    double Fc = 445e6;
-    double band_shift = 45e3;
-    //float rs_ratio = Fs_bb / Fs_tdma;
-    int rrs_ratio = 20;
+    float rs_ratio = Fs_bb / Fs_tdma;
+    float rrs_ratio = rs_ratio;
+    //int rrs_ratio = 20;
     int nin_bb = nin*rrs_ratio;
     int nout_bb = nout*rrs_ratio;
 
@@ -136,22 +145,26 @@ int main(int argc,char ** argv){
     tx_stuff.have_tx = false;
     tx_stuff.tx_time = 0;
 
-    tdma_set_tx_burst_cb(tdma,cb_tx_burst,(void*)&tx_stuff);
+    if(enable_tx)
+        tdma_set_tx_burst_cb(tdma,cb_tx_burst,(void*)&tx_stuff);
 
     //float filter_taps[decim_len]
     //firdecim_crcf decim_filter = firdecim_crcf_create_prototype(rrs_ratio,20,50);
-    msresamp_crcf decim_filter = msresamp_crcf_create(1.0/((float)rrs_ratio),50.0f);
-    msresamp_crcf interp_filter = msresamp_crcf_create((float)rrs_ratio,50.0f);
+    msresamp_crcf decim_filter = msresamp_crcf_create(1.0/((float)rs_ratio),50.0f);
+    msresamp_crcf interp_filter = msresamp_crcf_create((float)rs_ratio,50.0f);
 
     //apply settings
-    if (SoapySDRDevice_setSampleRate(sdr, SOAPY_SDR_TX, 0, Fs_bb) != 0)
-    {
-        printf("setSampleRate fail: %s\n", SoapySDRDevice_lastError());
+    if(enable_tx){
+        if (SoapySDRDevice_setSampleRate(sdr, SOAPY_SDR_TX, 0, Fs_bb) != 0)
+        {
+            printf("setSampleRate fail: %s\n", SoapySDRDevice_lastError());
+        }
+        if (SoapySDRDevice_setFrequency(sdr, SOAPY_SDR_TX, 0, Fc, NULL) != 0)
+        {
+            printf("setFrequency fail: %s\n", SoapySDRDevice_lastError());
+        }
     }
-    if (SoapySDRDevice_setFrequency(sdr, SOAPY_SDR_TX, 0, Fc, NULL) != 0)
-    {
-        printf("setFrequency fail: %s\n", SoapySDRDevice_lastError());
-    }
+
     if (SoapySDRDevice_setSampleRate(sdr, SOAPY_SDR_RX, 0, Fs_bb) != 0)
     {
         printf("setSampleRate fail: %s\n", SoapySDRDevice_lastError());
@@ -161,39 +174,69 @@ int main(int argc,char ** argv){
         printf("setFrequency fail: %s\n", SoapySDRDevice_lastError());
     }
 
-    /*if(SoapySDRDevice_setGainElement(sdr,SOAPY_SDR_RX,0,"LNA",3) != 0)
-        printf("setGainElement fail: %d\n",SoapySDRDevice_lastError());
+    /* Set up gains */
+    rc_json = json_object_get(config_json,"rx_gains");
+    if(rc_json != NULL){
+        json_object_foreach(rc_json,json_key,json_val){
+            double val = json_number_value(json_val);
+            if(SoapySDRDevice_setGainElement(sdr,SOAPY_SDR_RX,0,json_key,val) != 0){
+                fprintf(stderr,"setGainElement RX %s=%f fail: %d\n",json_key,val,SoapySDRDevice_lastError());
+            }
+            
+        }
+    }
+    rc_json = json_object_get(config_json,"tx_gains");
+    if((rc_json != NULL) && enable_tx){
+        json_object_foreach(rc_json,json_key,json_val){
+            double val = json_number_value(json_val);
+            if(SoapySDRDevice_setGainElement(sdr,SOAPY_SDR_TX,0,json_key,val) != 0){
+                fprintf(stderr,"setGainElement TX %s=%f fail: %d\n",json_key,val,SoapySDRDevice_lastError());
+            }
+        }
+    }
 
-    */
-    if(SoapySDRDevice_setGainElement(sdr,SOAPY_SDR_TX,0,"PAD",18) != 0)
-        printf("setGainElement fail: %d\n",SoapySDRDevice_lastError());
+    /* Set up antennas */
+    json_key = json_string_value(json_object_get(config_json,"rx_antenna"));
+    if(json_key != NULL){
+        if(SoapySDRDevice_setAntenna(sdr,SOAPY_SDR_RX,0,json_key)){
+            fprintf(stderr,"failed to set RX antenna %s\n",json_key);
+        }
+    }
 
-    if(SoapySDRDevice_setGainElement(sdr,SOAPY_SDR_RX,0,"IAMP",16) != 0)
-        printf("setGainElement fail: %d\n",SoapySDRDevice_lastError());
+    json_key = json_string_value(json_object_get(config_json,"tx_antenna"));
+    if(json_key != NULL && enable_tx){
+        if(SoapySDRDevice_setAntenna(sdr,SOAPY_SDR_TX,0,json_key)){
+           fprintf(stderr,"failed to set RX antenna %s\n",json_key);
+        }
+    }
 
-    if(SoapySDRDevice_setAntenna(sdr,SOAPY_SDR_TX,0,"BAND1"))
-        printf(">>> failed to set tx antenna\n");
-
-    if(SoapySDRDevice_setAntenna(sdr,SOAPY_SDR_RX,0,"LNAL"))
-        printf(">>> failed to set rx antenna\n");
+    /* Setup testor settings */
+    rc_json = json_object_get(config_json,"testor_settings");
+    if(rc_json != NULL){
+        ttf->tx_enable = json_is_true_nc(json_object_get(rc_json,"test_tx_enable"));
+        ttf->tx_master = json_is_true_nc(json_object_get(rc_json,"test_tx_master"));
+        ttf->tx_repeat = json_is_true_nc(json_object_get(rc_json,"test_tx_repeater"));
+        ttf->print_enable = json_is_true_nc(json_object_get(rc_json,"test_rx_print"));
+        ttf->tx_repeat = json_integer_value(json_object_get(rc_json,"test_station_id"));
+    }
 
     //setup a stream (complex floats)
     SoapySDRStream *rxStream;
     SoapySDRStream *txStream;
-    if (SoapySDRDevice_setupStream(sdr, &rxStream, SOAPY_SDR_RX, SOAPY_SDR_CF32, NULL, 0, NULL) != 0)
-    {
-        printf("setupStream fail: %s\n", SoapySDRDevice_lastError());
+    if (SoapySDRDevice_setupStream(sdr, &rxStream, SOAPY_SDR_RX, SOAPY_SDR_CF32, NULL, 0, NULL) != 0){
+        fprintf(stderr,"setupStream fail: %s\n", SoapySDRDevice_lastError());
     }
 
-    if (SoapySDRDevice_setupStream(sdr, &txStream, SOAPY_SDR_TX, SOAPY_SDR_CF32, NULL, 0, NULL) != 0)
-    {
-        printf("setupStream fail: %s\n", SoapySDRDevice_lastError());
+    if(enable_tx){
+        if (SoapySDRDevice_setupStream(sdr, &txStream, SOAPY_SDR_TX, SOAPY_SDR_CF32, NULL, 0, NULL) != 0){
+            fprintf(stderr,"setupStream fail: %s\n", SoapySDRDevice_lastError());
+        }   
     }
 
 
-    //if(SoapySDRDevice_setupStream())
-
-    SoapySDRDevice_activateStream(sdr, txStream, 0,0,0);    
+    if(enable_tx)    
+        SoapySDRDevice_activateStream(sdr, txStream, 0,0,0);    
+    
     SoapySDRDevice_activateStream(sdr, rxStream, 0, 0, 0); //start streaming
     //create a re-usable buffer for rx samples
     complex float slot_bbrx_buffer[nin_bb];
@@ -209,7 +252,9 @@ int main(int argc,char ** argv){
     i64 ts_tx_ns;
     i64 ts_tx_48k;
     i64 ts_rx_48k;
-    int mtu_tx = SoapySDRDevice_getStreamMTU(sdr, txStream);
+    int mtu_tx = 0;
+    if(enable_tx)
+        mtu_tx = SoapySDRDevice_getStreamMTU(sdr, txStream);
     int nsamp_rx = 0;
     int nsamp_tx = 0;
     int n_written_decim;
@@ -243,9 +288,9 @@ int main(int argc,char ** argv){
             ts_tx_ns = (tx_stuff.tx_time*62500)/3;
         }
 
-        tx_done = rx_done = false;
+        rx_done = false;
         /* Do RX and TX with radio */
-        tx_done = !tx_stuff.have_tx;
+        tx_done = ! (tx_stuff.have_tx && enable_tx);
         first_rx_loop = true;
         nsamp_rx = nsamp_tx = 0;
         while(!(tx_done&&rx_done)){
@@ -286,17 +331,17 @@ int main(int argc,char ** argv){
         tdma_rx(tdma,slot_rx_buffer,ts_rx_48k);
     }
 
-
-    //shutdown the stream
-    SoapySDRDevice_deactivateStream(sdr, rxStream, 0, 0); //stop streaming
+    SoapySDRDevice_deactivateStream(sdr, rxStream, 0, 0); 
     SoapySDRDevice_closeStream(sdr, rxStream);
 
-    SoapySDRDevice_deactivateStream(sdr, txStream, 0, 0); //stop streaming
-    SoapySDRDevice_closeStream(sdr, txStream);
+    if(enable_tx){
+        SoapySDRDevice_deactivateStream(sdr, txStream, 0, 0); 
+        SoapySDRDevice_closeStream(sdr, txStream);
+    }
 
-    //cleanup device handle
     SoapySDRDevice_unmake(sdr);
 
+    ttf_destroy(ttf);
     tdma_destroy(tdma);
     nco_crcf_destroy(downmixer);
     nco_crcf_destroy(upmixer);
