@@ -29,18 +29,21 @@
 
 static int ttf_tx_frame(u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma,u8 * uw_type, void * cb_data){
     tdma_test_framer * ttf = (tdma_test_framer*) cb_data;
+
     if(ttf == NULL)
         return 0;
 
     if(!ttf->tx_enable){
-        return 0;
         tdma_stop_tx(tdma,slot_i);
+        return 0;
     }
 
     if(ttf->tx_master){
         frame_bits[tdma->master_bit_pos] = 1;
+        tdma->state = master_sync;
     }else{
         frame_bits[tdma->master_bit_pos] = 0;
+        tdma->state = rx_no_sync;
     }
 
     /* TODO: implement repeater mode */
@@ -49,11 +52,11 @@ static int ttf_tx_frame(u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma,
     }
 
     ttf->tx_seq += 1;
-    if(ttf->tx_seq > 4096)
+    if(ttf->tx_seq >= 4096)
         ttf->tx_seq = 0;
 
-    int tx_seq_enc = golay23_encode(ttf->tx_seq);
-    int tx_id_enc = golay23_encode(ttf->tx_id);
+    int tx_seq_enc = golay23_encode((uint32_t)(ttf->tx_seq&0xFFF));
+    int tx_id_enc = golay23_encode((uint32_t)(ttf->tx_id&0xFFF));
 
     ttf->nbits_tx += 23*2;
 
@@ -69,7 +72,7 @@ static int ttf_tx_frame(u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma,
         frame_bits[bit_idx] = (tx_id_enc>>word_idx)&1;
     }
 
-    uw_type = 1;
+    *uw_type = 1;
 
     return 1;
 }

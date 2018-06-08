@@ -27,8 +27,8 @@
 */
 #include <SoapySDR/Device.h>
 #include <SoapySDR/Formats.h>
-#include <stdio.h> //printf
-#include <stdlib.h> //free
+#include <stdio.h> 
+#include <stdlib.h> 
 #include <complex.h>
 #include <math.h>
 #include <stdbool.h>
@@ -49,7 +49,7 @@ int cb_tx_burst(tdma_t * tdma,float complex* samples, size_t n_samples,i64 times
     tx_stuff->have_tx = true;
     tx_stuff->tx_time = timestamp;
     for(int i = 0; i < tdma_nout(tdma); i++){
-        samples[i] = samples[i]*.6;
+        samples[i] = samples[i]*.2;
     }
     memcpy(tx_stuff->tx_buffer,samples,sizeof(float complex)*tdma_nout(tdma));
 }
@@ -112,7 +112,13 @@ int main(int argc,char ** argv){
     double Fc =         json_number_value(json_object_get(config_json,"rf_freq"));
     double band_shift = json_number_value(json_object_get(config_json,"bb_shift"));
 
+    Fs_bb -= band_shift;
+
     bool enable_tx = json_is_true_nc(json_object_get(config_json,"sdr_tx_enable"));
+    if(enable_tx)
+        printf("TX Enabled!\n");
+    else
+        printf("TX Disabled!\n");
 
     struct TDMA_MODE_SETTINGS mode = FREEDV_4800T;
     tdma_t * tdma = tdma_create(mode);
@@ -152,6 +158,10 @@ int main(int argc,char ** argv){
     //firdecim_crcf decim_filter = firdecim_crcf_create_prototype(rrs_ratio,20,50);
     msresamp_crcf decim_filter = msresamp_crcf_create(1.0/((float)rs_ratio),50.0f);
     msresamp_crcf interp_filter = msresamp_crcf_create((float)rs_ratio,50.0f);
+
+    SoapySDRDevice_setBandwidth(sdr, SOAPY_SDR_RX,0, 5e6);
+    SoapySDRDevice_setBandwidth(sdr, SOAPY_SDR_TX,0, 5e6);
+
 
     //apply settings
     if(enable_tx){
@@ -217,7 +227,9 @@ int main(int argc,char ** argv){
         ttf->tx_master = json_is_true_nc(json_object_get(rc_json,"test_tx_master"));
         ttf->tx_repeat = json_is_true_nc(json_object_get(rc_json,"test_tx_repeater"));
         ttf->print_enable = json_is_true_nc(json_object_get(rc_json,"test_rx_print"));
-        ttf->tx_repeat = json_integer_value(json_object_get(rc_json,"test_station_id"));
+        ttf->tx_id = json_integer_value(json_object_get(rc_json,"test_station_id"));
+    }else{
+        fprintf(stderr,"RC_JSON NULL!\n");
     }
 
     //setup a stream (complex floats)
@@ -347,7 +359,6 @@ int main(int argc,char ** argv){
     nco_crcf_destroy(upmixer);
     msresamp_crcf_destroy(decim_filter);
 
-    printf("Done\n");
     return EXIT_SUCCESS;
 
 }

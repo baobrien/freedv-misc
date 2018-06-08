@@ -1,18 +1,15 @@
 {
     "radio":{
-        "driver":"lime"
+        "driver":"bladerf",
+        "xb200":"auto"
     },
     "rx_gains":{
-        "TIA":0,
-        "LNA":0,
-        "PGA":0
+        "LNA":3,
+        "VGA1":18,
+        "VGA2":16
     },
     "tx_gains":{
-        "PAD":0,
-        "IAMP":0
     },
-    "rx_antenna":"LNAL",
-    "tx_antenna":"BAND1",
     "samp_rate":960000,
     "rf_freq":445e6,
     "bb_shift":45e3,
@@ -23,6 +20,6 @@
         "test_tx_master":false,
         "test_tx_repeater":false,
         "test_rx_print":true,
-        "test_station_id":100
+        "test_station_id":200
     }
 }
