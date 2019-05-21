@@ -1,7 +1,6 @@
 {
     "radio":{
-        "driver":"bladerf",
-        "xb200":"auto"
+        "driver":"bladerf"
     },
     "rx_gains":{
         "LNA":3,
@@ -11,12 +10,12 @@
     "tx_gains":{
     },
     "samp_rate":960000,
-    "rf_freq":445e6,
+    "rf_freq":910e6,
     "bb_shift":45e3,
-    "sdr_tx_enable":true,
+    "sdr_tx_enable":false,
 
     "testor_settings":{
-        "test_tx_enable":true,
+        "test_tx_enable":false,
         "test_tx_master":false,
         "test_tx_repeater":false,
         "test_rx_print":true,

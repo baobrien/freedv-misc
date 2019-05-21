@@ -5,3 +5,4 @@ build
 *.cf32
 *.fc32
 CMakeFiles
+CMakeCache.txt

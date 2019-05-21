@@ -112,7 +112,7 @@ int main(int argc,char ** argv){
     double Fc =         json_number_value(json_object_get(config_json,"rf_freq"));
     double band_shift = json_number_value(json_object_get(config_json,"bb_shift"));
 
-    Fs_bb -= band_shift;
+    Fc -= band_shift;
 
     bool enable_tx = json_is_true_nc(json_object_get(config_json,"sdr_tx_enable"));
     if(enable_tx)
@@ -311,7 +311,7 @@ int main(int argc,char ** argv){
                 flags_rx = 0;
                 int ret_rx =  SoapySDRDevice_readStream(sdr, rxStream, rx_buffs, nin_bb - nsamp_rx, &flags_rx, &timeNsRx, 100000);
                 if(ret_rx < 0){
-                    printf("err: %d\n",ret_rx);
+                    printf("err rx: %d\n",ret_rx);
                     rx_done = true;
                 }
                 nsamp_rx += ret_rx;
@@ -326,7 +326,7 @@ int main(int argc,char ** argv){
                 if(nsamp_tx == 0) flags_tx |= SOAPY_SDR_HAS_TIME;
                 ret_tx = SoapySDRDevice_writeStream(sdr, txStream, tx_buffs, (nout_bb - nsamp_tx), &flags_tx, ts_tx_ns,100000);
                 if(ret_tx < 0){
-                    printf("err: %d\n",ret_tx);
+                    printf("err tx: %d\n",ret_tx);
                     tx_done = true;
                 }
                 nsamp_tx += ret_tx;
