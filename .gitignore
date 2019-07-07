@@ -6,3 +6,6 @@ build
 *.fc32
 CMakeFiles
 CMakeCache.txt
+Makefile
+tdma_pluto
+cmake_install.cmake
