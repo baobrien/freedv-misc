@@ -40,6 +40,14 @@ typedef struct {
 	tdma_stuff_holder* first;
 } tx_queue;
 
+struct tx_thread_stuff {
+	struct iio_device *tx_dev;
+	int rate_decim;
+	tx_queue tx_baseband_queue;
+	pthread_mutex_t *queue_lock;
+};
+
+
 int cb_tx_burst(tdma_t * tdma,float complex* samples, size_t n_samples,i64 timestamp,void * cb_data){
     tx_queue * tx_q = (tx_queue*) cb_data;
 
@@ -62,19 +70,25 @@ int cb_tx_burst(tdma_t * tdma,float complex* samples, size_t n_samples,i64 times
 	}
 }
 
-
-struct tx_thread_stuff {
-	struct iio_device *tx_dev;
-	int rate_decim;
-	tx_queue tx_baseband_queue;
-	pthread_mutex_t *queue_lock;
-};
-
-
 static size_t cbuffercf_free(cbuffercf buf){
 	return cbuffercf_max_size(buf) - cbuffercf_size(buf);
 }
 
+/* Convert Comp. Short. 16 bit samps from the pluto into complex float */
+static void cs16_to_cf32(complex float * restrict out, short * const in, size_t n, float mult) {
+	// the C standard defines complex float as the same as an array of [r,i]
+	float * restrict out_f = (float*)out;
+	for (size_t i = 0; i < n * 2; i++) {
+		out_f[i] = ((float)in[i]) * mult;
+	}
+}
+
+static void cf32_to_cs16(short * const in, complex float * restrict out, size_t n, float mult) {
+	float * const in_f = in;
+	for (size_t i = 0; i < n * 2; i++) {
+		out[i] = (short)(in_f[i] * mult);
+	}
+}
 
 void tx_thread_entry(void *args){
 	int64_t tx_samp_count = 0;
@@ -306,16 +320,8 @@ int main (int argc, char **argv)
 			p_end = iio_buffer_end(rxbuf);
 			p_dat = iio_buffer_first(rxbuf, rx0_i);
 
-			int id = 0;
-
-			for (; p_dat < p_end; p_dat += p_inc, t_dat += p_inc) {
-				const int16_t i = ((int16_t*)p_dat)[0]; // Real (I)
-				const int16_t q = ((int16_t*)p_dat)[1]; // Imag (Q)
-	
-				// Convert into CF32 and stick on output buffer
-				cfibuff[id] = ((float)i)*R_TO_M + ((float)q)*R_TO_M*I;
-				id++;
-			}
+			
+			cs16_to_cf32(cfibuff, p_dat, IIO_BUF_SIZE, R_TO_M);
 			cbuffercf_write(in1_buffer, cfibuff, IIO_BUF_SIZE);	
 			loop_iter++;
 		}
