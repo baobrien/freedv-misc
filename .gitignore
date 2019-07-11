@@ -9,3 +9,8 @@ CMakeCache.txt
 Makefile
 tdma_pluto
 cmake_install.cmake
+bladerf_test
+tdma_bladerf
+tdma_lime
+tdma_soapy
+

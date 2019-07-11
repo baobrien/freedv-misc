@@ -111,8 +111,9 @@ static void ttf_rx_frame(u8* frame_bits,u32 slot_i, slot_t * slot, tdma_t * tdma
     ttf->nbits_rx += 23*2;
     ttf->nbits_rx_err += errs;
 
+    int sso = slot->slot_local_frame_offset;
     if(ttf->print_enable)
-        fprintf(stdout,"Got Frame seq %d id %d errs %d slt %d\n",(int)rx_seq,(int)rx_id,errs,slot_i);    
+        fprintf(stdout,"Got Frame seq %d id %d errs %d slt %d sso %d\n",(int)rx_seq,(int)rx_id,errs,slot_i, sso);    
 }
 
 tdma_test_framer * ttf_create(tdma_t * tdma){

@@ -22,9 +22,9 @@ target_include_directories(tdma_bladerf PUBLIC /usr/local/lib/)
 find_library(CODEC2_LIB codec2)
 target_link_libraries(tdma_bladerf SoapySDR liquid m)
 
-add_executable(tdma_lime csrc/lime_tdma_test.c csrc/tdma_testframer.h csrc/tdma_testframer.c ${tdmaSources})
-target_include_directories(tdma_lime PUBLIC  /usr/local/lib/)
+add_executable(tdma_soapy csrc/tdma_soapy.c csrc/tdma_testframer.h csrc/tdma_testframer.c ${tdmaSources})
+target_include_directories(tdma_soapy PUBLIC /usr/local/lib/)
 
-target_link_libraries(tdma_lime SoapySDR liquid m jansson)
+target_link_libraries(tdma_soapy SoapySDR liquid m jansson)
 
 

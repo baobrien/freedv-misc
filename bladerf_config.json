@@ -10,13 +10,13 @@
     "tx_gains":{
     },
     "samp_rate":960000,
-    "rf_freq":910e6,
+    "rf_freq":909995000,
     "bb_shift":45e3,
-    "sdr_tx_enable":false,
+    "sdr_tx_enable":true,
 
     "testor_settings":{
-        "test_tx_enable":false,
-        "test_tx_master":false,
+        "test_tx_enable":true,
+        "test_tx_master":true,
         "test_tx_repeater":false,
         "test_rx_print":true,
         "test_station_id":200

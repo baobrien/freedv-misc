@@ -43,15 +43,14 @@ typedef struct {
 int cb_tx_burst(tdma_t * tdma,float complex* samples, size_t n_samples,i64 timestamp,void * cb_data){
     tx_queue * tx_q = (tx_queue*) cb_data;
 
-	size_t nout = tdma_nout(tdma);
 	tdma_stuff_holder * tx_stuff = malloc(sizeof(tdma_stuff_holder));
-	tx_stuff->tx_buffer = malloc(sizeof(complex float)*nout);
+	tx_stuff->tx_buffer = malloc(sizeof(complex float)*n_samples);
     tx_stuff->tx_time = timestamp;
 	tx_stuff->next = NULL;
-    for(int i = 0; i < tdma_nout(tdma); i++){
+    for(int i = 0; i < n_samples; i++){
         samples[i] = samples[i]*.2;
     }
-    memcpy(tx_stuff->tx_buffer,samples,sizeof(float complex)*nout);
+    memcpy(tx_stuff->tx_buffer,samples,sizeof(float complex)*n_samples);
 	tdma_stuff_holder * p = tx_q->first;
 	if (p == NULL) {
 		tx_q->first = tx_stuff;
@@ -66,7 +65,7 @@ int cb_tx_burst(tdma_t * tdma,float complex* samples, size_t n_samples,i64 times
 
 struct tx_thread_stuff {
 	struct iio_device *tx_dev;
-	int nin, rate_decim, nout;
+	int rate_decim;
 	tx_queue tx_baseband_queue;
 	pthread_mutex_t *queue_lock;
 };
@@ -79,6 +78,7 @@ static size_t cbuffercf_free(cbuffercf buf){
 
 void tx_thread_entry(void *args){
 	int64_t tx_samp_count = 0;
+	int rate_decim;
 	int err;
 
 	struct tx_thread_stuff* tts = (struct tx_thread_stuff*) args;
@@ -87,13 +87,8 @@ void tx_thread_entry(void *args){
 	struct iio_channel *tx0_i, *tx0_q;
 	struct iio_buffer *txbuf;
     
-	struct iio_context *ctx_tx;
-	struct iio_device *phy;
-
 	tx_dev = tts->tx_dev;
-	int nin = tts->nin;
-	int rate_decim = tts->rate_decim;
-	int nout = tts->nout;
+	rate_decim = tts->rate_decim;
 
 	tx0_i = iio_device_find_channel(tx_dev, "voltage0", true);
 	tx0_q = iio_device_find_channel(tx_dev, "voltage1", true);
@@ -108,8 +103,6 @@ void tx_thread_entry(void *args){
 	if (err != 0) {
 		printf("ERR iio_buffer_set_blocking_mode: %s\n",strerror(-err));
 	}
-	bool in_tx = false;
-	bool run = false;
 	complex float * burst_buf_ptr;
 	size_t burst_samps;
 	int64_t burst_start;
@@ -121,27 +114,25 @@ void tx_thread_entry(void *args){
 				tdma_stuff_holder* cur = tts->tx_baseband_queue.first;
 				tts->tx_baseband_queue.first = cur->next;
 				current_burst = cur;
+			}
+			pthread_mutex_unlock(tts->queue_lock);
+			if (current_burst != NULL) {
 				burst_samps = current_burst->buf_samps;
 				burst_buf_ptr = current_burst->tx_buffer;
 				burst_start = current_burst->tx_time;
-				printf("Burst starts at %lld\n",burst_start);
 			}
-			pthread_mutex_unlock(tts->queue_lock);
 		} 
-		run = true;
-		void *p_dat, *p_end, *t_dat;
+		void *p_dat, *p_end;
 		size_t p_inc;
 		
 		p_inc = iio_buffer_step(txbuf);
 		p_end = iio_buffer_end(txbuf);
 		p_dat = iio_buffer_first(txbuf, tx0_i);
-		int p_samps = (p_end - p_dat) / p_inc;
 
 		memset(p_dat, 0, p_end-p_dat);
 		if (current_burst == NULL) {
-			in_tx = false;
+
 		} else if (burst_start < tx_samp_count) {
-			printf("Freeing past empty burst start: %lld tsc %lld\n",burst_start, tx_samp_count);
 			free(current_burst->tx_buffer);
 			free(current_burst);
 			current_burst = NULL;
@@ -152,20 +143,20 @@ void tx_thread_entry(void *args){
 				exit(1);
 			}
 			int i = 0, burst_read_samps = 0;
+			// Fill front-end with zeros
 			for (; i < burst_start_offset; p_dat += p_inc, i++) {
-
+				((int16_t*)p_dat)[0] = 0;
+				((int16_t*)p_dat)[1] = 0;
 			}
+			// Copy TX samples
 			for (; i < IIO_BUF_SIZE && burst_read_samps < burst_samps; p_dat += p_inc, i++, burst_read_samps++) {
 				assert(p_dat <= p_end);
-				((int16_t*)p_dat)[0] = (int16_t)(crealf(burst_buf_ptr[i])*M_TO_R);
-				((int16_t*)p_dat)[1] = (int16_t)(cimagf(burst_buf_ptr[i])*M_TO_R);
+				((int16_t*)p_dat)[0] = (int16_t)(crealf(burst_buf_ptr[burst_read_samps])*M_TO_R);
+				((int16_t*)p_dat)[1] = (int16_t)(cimagf(burst_buf_ptr[burst_read_samps])*M_TO_R);
 			}
-
-
 			burst_start += burst_read_samps;
 			burst_buf_ptr += burst_read_samps;
 			burst_samps -= burst_read_samps;
-			printf("Xmitted %d samples\n",burst_read_samps);
 			if (burst_samps == 0) {
 				free(current_burst->tx_buffer);
 				free(current_burst);
@@ -196,7 +187,6 @@ int main (int argc, char **argv)
     const int rate_decim = rate_bb/rate_mdm;
     const float f_shift = 45000;
     uint64_t rf_bbf = rf_center - (uint64_t)f_shift;
-	int err;
 
 	iirdecim_crcf iir_dc = iirdecim_crcf_create_default(rate_decim, 8);
 	iirinterp_crcf iir_uc = iirinterp_crcf_create_default(rate_decim, 8);
@@ -213,13 +203,10 @@ int main (int argc, char **argv)
 	const int nin = tdma_nin(tdma);
     //tdma_set_rx_cb(tdma,cb_rx_frame,NULL);
     //tdma_set_tx_cb(tdma,cb_tx_frame,NULL);
-    tdma->tx_multislot_delay = 10;
+    tdma->tx_multislot_delay = 9;
+	tdma->loop_delay = -60;
 
     tdma_test_framer * ttf = ttf_create(tdma);
-    ttf->print_enable = true;
-	ttf->tx_enable = true;
-	ttf->tx_master = true;
-	ttf->tx_id = 101;
 	pthread_t tx_thread;
 	pthread_mutex_t tx_queue_lock;
 
@@ -260,8 +247,6 @@ int main (int argc, char **argv)
 
 	pthread_mutex_init(&tx_queue_lock, NULL);
 	tts.tx_dev = tx_dev;
-	tts.nin = nin;
-	tts.nout = nout;
 	tts.rate_decim = rate_decim;
 	tts.tx_baseband_queue.first = NULL;
 	tts.queue_lock = &tx_queue_lock;
@@ -280,25 +265,24 @@ int main (int argc, char **argv)
 
 	pthread_create(&tx_thread, NULL, tx_thread_entry, (void*)&tts);
 
-
-	complex float tx_uc_cf_buf[IIO_BUF_SIZE];
 	complex float cfibuff[IIO_BUF_SIZE];
 	complex float *rxdc1  = (complex float*) malloc(sizeof(complex float) * nin * rate_decim);
 	complex float *rxtdma = (complex float*) malloc(sizeof(complex float) * nin);
-
 
 	bool run = true;
 	int loop_iter = 0;
 	uint64_t rx_samp_count = 0;
 
 	complex float *tx_lb_buf = (complex float*) malloc(sizeof(complex float) * nin * rate_decim);
-	complex float *tx_burst_buf = (complex float*) malloc(sizeof(complex float) * nin * rate_decim);
-	complex float *tx_burst_ptr = tx_burst_buf;
-	uint64_t tx_burst_time = 0;
-	size_t tx_burst_n = 0;
-	tdma_start_tx(tdma, 1);
+
+    ttf->print_enable = true;
+	ttf->tx_enable = true;
+	ttf->tx_master = false;
+	ttf->tx_id = 101;
+	tdma->ignore_rx_on_tx = true;
+
+	bool in_tx = false;
 	while (true) {
-		loop_iter++;
 		run = true;
 		while(run) {
 			void *p_dat, *p_end, *t_dat;
@@ -332,9 +316,22 @@ int main (int argc, char **argv)
 				cfibuff[id] = ((float)i)*R_TO_M + ((float)q)*R_TO_M*I;
 				id++;
 			}
-			cbuffercf_write(in1_buffer, cfibuff, IIO_BUF_SIZE);
+			cbuffercf_write(in1_buffer, cfibuff, IIO_BUF_SIZE);	
+			loop_iter++;
 		}
 		run = true;
+
+		if (loop_iter > 100 && !in_tx) {
+			if(tdma_get_slot(tdma,0)->state == rx_sync){
+                tdma_start_tx(tdma,1);
+                in_tx = true;
+                printf("Starting TX, slot 1\n");
+            }else if(tdma_get_slot(tdma,1)->state == rx_sync){
+                tdma_start_tx(tdma,0);
+                in_tx = true;
+                printf("Starting TX, slot 0\n");
+            }
+		}
 
 	    while (run) {
 			if (cbuffercf_size(in1_buffer) < (nin * rate_decim)) {
@@ -362,10 +359,9 @@ int main (int argc, char **argv)
 			iirinterp_crcf_execute_block(iir_uc, tx_stuff->tx_buffer, nout, tx_lb_buf);
 			nco_crcf_mix_block_up(upmixer, tx_lb_buf, bb_stuff->tx_buffer, nout * rate_decim);
 
-			tx_burst_time = tx_stuff->tx_time * rate_decim;
+			int64_t tx_burst_time = tx_stuff->tx_time * rate_decim;
 			
-			tx_burst_ptr = tx_burst_buf;
-			tx_burst_n = nout * rate_decim;
+			size_t tx_burst_n = nout * rate_decim;
 
 			bb_stuff->tx_time = tx_burst_time;
 			bb_stuff->buf_samps = tx_burst_n;
