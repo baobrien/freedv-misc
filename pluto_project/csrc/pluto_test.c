@@ -83,8 +83,8 @@ static void cs16_to_cf32(complex float * restrict out, short * const in, size_t 
 	}
 }
 
-static void cf32_to_cs16(short * const in, complex float * restrict out, size_t n, float mult) {
-	float * const in_f = in;
+static void cf32_to_cs16(short * const out, complex float * restrict in, size_t n, float mult) {
+	float * const in_f = (float*)in;
 	for (size_t i = 0; i < n * 2; i++) {
 		out[i] = (short)(in_f[i] * mult);
 	}
@@ -145,38 +145,49 @@ void tx_thread_entry(void *args){
 
 		memset(p_dat, 0, p_end-p_dat);
 		if (current_burst == NULL) {
-
+			// No pending burst, send silence
+			memset(p_dat, 0, p_end-p_dat);
 		} else if (burst_start < tx_samp_count) {
+			// Pending burst is already old. Clear and send silence.
+			memset(p_dat, 0, p_end-p_dat);
 			free(current_burst->tx_buffer);
 			free(current_burst);
 			current_burst = NULL;
 			burst_start = 0;
 		} else if (burst_start <= tx_samp_count + IIO_BUF_SIZE) {
-			int64_t burst_start_offset =  burst_start - tx_samp_count;
-			if (burst_start_offset < 0) {
-				exit(1);
+			// This buffer will contain a burst
+			// How many samples from the start of this buffer does the burst start?
+			size_t burst_start_offset = (size_t) (burst_start - tx_samp_count);
+			size_t  burst_read_samps = 0;
+
+			p_dat += (p_inc*burst_start_offset);
+
+			// How many samples left in buffer after burst starts
+			size_t subburst_n_samps = IIO_BUF_SIZE - burst_start_offset;
+
+			// Cap subburst_n_samps if the burst ends before the next buffer
+			if (subburst_n_samps > burst_samps) {
+				subburst_n_samps = burst_samps;
 			}
-			int i = 0, burst_read_samps = 0;
-			// Fill front-end with zeros
-			for (; i < burst_start_offset; p_dat += p_inc, i++) {
-				((int16_t*)p_dat)[0] = 0;
-				((int16_t*)p_dat)[1] = 0;
-			}
-			// Copy TX samples
-			for (; i < IIO_BUF_SIZE && burst_read_samps < burst_samps; p_dat += p_inc, i++, burst_read_samps++) {
-				assert(p_dat <= p_end);
-				((int16_t*)p_dat)[0] = (int16_t)(crealf(burst_buf_ptr[burst_read_samps])*M_TO_R);
-				((int16_t*)p_dat)[1] = (int16_t)(cimagf(burst_buf_ptr[burst_read_samps])*M_TO_R);
-			}
+
+			// Copy and convert TX samples
+			cf32_to_cs16((short*)p_dat, burst_buf_ptr, subburst_n_samps, M_TO_R);
+
+			// Update burst counters to reflect TX'ed samples
 			burst_start += burst_read_samps;
 			burst_buf_ptr += burst_read_samps;
 			burst_samps -= burst_read_samps;
+
+			// If there aren't any more burst samps, end this burst
 			if (burst_samps == 0) {
 				free(current_burst->tx_buffer);
 				free(current_burst);
 				current_burst = NULL;
 				burst_start = 0;
 			}
+		} else {
+			// Pending burst has not yet started. Send silence
+			memset(p_dat, 0, p_end-p_dat);
 		}
 		iio_buffer_push(txbuf);
 		tx_samp_count += IIO_BUF_SIZE;
