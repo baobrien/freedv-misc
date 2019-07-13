@@ -90,6 +90,7 @@ static void cf32_to_cs16(short * const out, complex float * restrict in, size_t 
 	}
 }
 
+// TODO: move TX re-sampling into TX thread to take work off of main thread
 void tx_thread_entry(void *args){
 	int64_t tx_samp_count = 0;
 	int rate_decim;
@@ -122,6 +123,7 @@ void tx_thread_entry(void *args){
 	int64_t burst_start;
 	tdma_stuff_holder* current_burst = NULL;
 	while (true) {
+		// If no burst is pending, check queue and pop one off
 		if	(current_burst == NULL) {
 			pthread_mutex_lock(tts->queue_lock);
 			if (tts->tx_baseband_queue.first != NULL) {
