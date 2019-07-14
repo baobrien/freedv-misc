@@ -84,7 +84,11 @@ static void cs16_to_cf32(complex float * restrict out, short * const in, size_t 
 }
 
 static void cf32_to_cs16(short * const out, complex float * restrict in, size_t n, float mult) {
+<<<<<<< HEAD
 	float * const in_f = (float*)in;
+=======
+	float * const in_f = in;
+>>>>>>> 5957116... Some cleanup; tracking down TX issues
 	for (size_t i = 0; i < n * 2; i++) {
 		out[i] = (short)(in_f[i] * mult);
 	}
@@ -231,7 +235,7 @@ int main (int argc, char **argv)
     //tdma_set_rx_cb(tdma,cb_rx_frame,NULL);
     //tdma_set_tx_cb(tdma,cb_tx_frame,NULL);
     tdma->tx_multislot_delay = 9;
-	tdma->loop_delay = -60;
+	tdma->loop_delay = 0;
 
     tdma_test_framer * ttf = ttf_create(tdma);
 	pthread_t tx_thread;
@@ -308,6 +312,11 @@ int main (int argc, char **argv)
 	ttf->tx_id = 101;
 	tdma->ignore_rx_on_tx = true;
 
+	if (argc > 1) {
+		ttf->tx_master = true;
+		ttf->tx_id = 200;
+	}
+
 	bool in_tx = false;
 	while (true) {
 		run = true;
@@ -378,7 +387,9 @@ int main (int argc, char **argv)
 			iirinterp_crcf_execute_block(iir_uc, tx_stuff->tx_buffer, nout, tx_lb_buf);
 			nco_crcf_mix_block_up(upmixer, tx_lb_buf, bb_stuff->tx_buffer, nout * rate_decim);
 
-			int64_t tx_burst_time = tx_stuff->tx_time * rate_decim;
+			// convert burst time to baseband sample rate and adjust timing for rx->tx latency
+			// 55 samps at 48Khz mesasured on a couple of plutos at a 48000/20 granularity
+			int64_t tx_burst_time = (tx_stuff->tx_time - 55) * rate_decim;
 			
 			size_t tx_burst_n = nout * rate_decim;
 
