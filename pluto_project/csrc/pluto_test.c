@@ -42,6 +42,7 @@ struct tx_thread_stuff {
 	int rate_bb;
 	float f_shift;
 	tx_queue tx_baseband_queue;
+	volatile bool tx_quit;
 };
 
 int cb_tx_burst(tdma_t * tdma,COMP* samples, size_t n_samples,i64 timestamp,void * cb_data){
@@ -214,8 +215,21 @@ void *tx_thread_entry(void *args){
 		}
 		iio_buffer_push(txbuf);
 		tx_samp_count += p_samps;
+
+		if (tts->tx_quit) {
+			break;
+		}
 	}
 
+	iio_buffer_destroy(txbuf);
+	free(tx_lb_buf);
+	free(tx_bb_buf);
+	if (current_burst != NULL) {
+		free(current_burst->tx_buffer);
+		free(current_burst);
+	}
+	iirinterp_crcf_destroy(iir_uc);
+	nco_crcf_destroy(upmixer);
 	return NULL;
 }
 
@@ -364,11 +378,11 @@ int main (int argc, char **argv)
 		run = true;
 
 		if (loop_iter > 100 && !in_tx) {
-			if(tdma_get_slot(tdma,0)->state == rx_sync){
+			if (tdma_get_slot(tdma,0)->state == rx_sync) {
                 tdma_start_tx(tdma,1);
                 in_tx = true;
                 printf("Starting TX, slot 1\n");
-            }else if(tdma_get_slot(tdma,1)->state == rx_sync){
+            } else if (tdma_get_slot(tdma,1)->state == rx_sync) {
                 tdma_start_tx(tdma,0);
                 in_tx = true;
                 printf("Starting TX, slot 0\n");
@@ -390,16 +404,29 @@ int main (int argc, char **argv)
 			rx_samp_count += nin;
 
 		}
-
+		if(loop_iter > 1000) {
+			break;
+		}
 		
 	} 
 
-
-    // firdecim_crcf_destroy(fir_dc);
-    // firinterp_crcf_destroy(fir_uc);
+	tts.tx_quit = true;
+	pthread_join(tx_thread, NULL);
+	
 	iio_buffer_destroy(rxbuf);
  
 	iio_context_destroy(ctx_rx);
- 
+	iio_context_destroy(ctx_tx);
+
+	free(rxdc1);
+	free(rxtdma);
+
+	cbuffercf_destroy(in1_buffer);
+	nco_crcf_destroy(downmixer);
+	iirdecim_crcf_destroy(iir_dc);
+
+	ttf_destroy(ttf);
+	tdma_destroy(tdma);
+
 }
 
