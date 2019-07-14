@@ -44,7 +44,7 @@ struct tx_thread_stuff {
 	tx_queue tx_baseband_queue;
 };
 
-int cb_tx_burst(tdma_t * tdma,float complex* samples, size_t n_samples,i64 timestamp,void * cb_data){
+int cb_tx_burst(tdma_t * tdma,COMP* samples, size_t n_samples,i64 timestamp,void * cb_data){
     tx_queue * tx_q = (tx_queue*) cb_data;
 
 	tdma_burst * tx_stuff = malloc(sizeof(tdma_burst));
@@ -53,7 +53,8 @@ int cb_tx_burst(tdma_t * tdma,float complex* samples, size_t n_samples,i64 times
 	tx_stuff->next = NULL;
 	tx_stuff->n_tx_samps = n_samples;
 
-    memcpy(tx_stuff->tx_buffer,samples,sizeof(float complex)*n_samples);
+	// cast from COMP* into float complex* because both have the same memory layout
+    memcpy(tx_stuff->tx_buffer,(float complex*)samples,sizeof(float complex)*n_samples);
 
 	pthread_mutex_lock(tx_q->queue_lock);
 	tdma_burst * p = tx_q->first;
@@ -86,7 +87,7 @@ static void cf32_to_cs16(short * const out, complex float * restrict in, size_t 
 }
 
 // TODO: move TX re-sampling into TX thread to take work off of main thread
-void tx_thread_entry(void *args){
+void *tx_thread_entry(void *args){
 	int64_t tx_samp_count = 0;
 	float f_shift;
 	int rate_bb;
@@ -208,7 +209,8 @@ void tx_thread_entry(void *args){
 		iio_buffer_push(txbuf);
 		tx_samp_count += IIO_BUF_SIZE;
 	}
-	
+
+	return NULL;
 }
 
 int main (int argc, char **argv)
@@ -369,7 +371,7 @@ int main (int argc, char **argv)
 				run = false;
 				continue;
 			}
-			int nread_1b;
+			size_t nread_1b;
 			float complex * i1b;
 			cbuffercf_read(in1_buffer, nin * rate_decim, &i1b, &nread_1b);
 			nco_crcf_mix_block_down(downmixer, i1b, rxdc1, nread_1b);
