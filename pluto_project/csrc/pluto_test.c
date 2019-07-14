@@ -86,7 +86,6 @@ static void cf32_to_cs16(short * const out, complex float * restrict in, size_t 
 	}
 }
 
-// TODO: move TX re-sampling into TX thread to take work off of main thread
 void *tx_thread_entry(void *args){
 	int64_t tx_samp_count = 0;
 	float f_shift;
@@ -155,13 +154,13 @@ void *tx_thread_entry(void *args){
 			}
 		} 
 		void *p_dat, *p_end;
-		size_t p_inc;
+		size_t p_inc, p_samps;
 		
 		p_inc = iio_buffer_step(txbuf);
 		p_end = iio_buffer_end(txbuf);
 		p_dat = iio_buffer_first(txbuf, tx0_i);
+		p_samps = (p_end-p_dat)/p_inc;
 
-		memset(p_dat, 0, p_end-p_dat);
 		if (current_burst == NULL) {
 			// No pending burst, send silence
 			memset(p_dat, 0, p_end-p_dat);
@@ -172,15 +171,18 @@ void *tx_thread_entry(void *args){
 			free(current_burst);
 			current_burst = NULL;
 			burst_start = 0;
-		} else if (burst_start <= tx_samp_count + IIO_BUF_SIZE) {
+		} else if (burst_start <= tx_samp_count + p_samps) {
 			// This buffer will contain a burst
 			// How many samples from the start of this buffer does the burst start?
 			size_t burst_start_offset = (size_t) (burst_start - tx_samp_count);
 
-			p_dat += (p_inc*burst_start_offset);
-
+			// Fill in first samps with zeros and bump front end pointer
+			if (burst_start_offset > 0) {
+				memset(p_dat, 0, p_inc*burst_start_offset);
+				p_dat += (p_inc*burst_start_offset);
+			}
 			// How many samples left in buffer after burst starts
-			size_t subburst_n_samps = IIO_BUF_SIZE - burst_start_offset;
+			size_t subburst_n_samps = p_samps - burst_start_offset;
 
 			// Cap subburst_n_samps if the burst ends before the next buffer
 			if (subburst_n_samps > burst_samps) {
@@ -201,13 +203,17 @@ void *tx_thread_entry(void *args){
 				free(current_burst);
 				current_burst = NULL;
 				burst_start = 0;
+
+				// Fill in end of burst with silence
+				size_t remaining_samps = p_samps - burst_start_offset - subburst_n_samps;
+				memset(p_dat + (p_inc*subburst_n_samps), 0, remaining_samps * p_inc);
 			}
 		} else {
 			// Pending burst has not yet started. Send silence
 			memset(p_dat, 0, p_end-p_dat);
 		}
 		iio_buffer_push(txbuf);
-		tx_samp_count += IIO_BUF_SIZE;
+		tx_samp_count += p_samps;
 	}
 
 	return NULL;
@@ -330,8 +336,8 @@ int main (int argc, char **argv)
 	while (true) {
 		run = true;
 		while(run) {
-			void *p_dat;
-
+			void *p_dat, *p_end;
+			size_t p_inc, p_samps;
 			// Do we have enough room in the output cbuf for a full chunk of samples?
 			if(cbuffercf_max_size(in1_buffer) - cbuffercf_size(in1_buffer) < IIO_BUF_SIZE) {
 				run = false;
@@ -347,9 +353,12 @@ int main (int argc, char **argv)
 				printf("err iio_buffer_refill: %s\n", strerror(-ret));
 			}
 			p_dat = iio_buffer_first(rxbuf, rx0_i);
+			p_end = iio_buffer_end(rxbuf);
+			p_inc = iio_buffer_step(rxbuf);
+			p_samps = (p_end-p_dat)/p_inc;
 
-			cs16_to_cf32(cfibuff, p_dat, IIO_BUF_SIZE, R_TO_M);
-			cbuffercf_write(in1_buffer, cfibuff, IIO_BUF_SIZE);	
+			cs16_to_cf32(cfibuff, p_dat, p_samps, R_TO_M);
+			cbuffercf_write(in1_buffer, cfibuff, p_samps);	
 			loop_iter++;
 		}
 		run = true;
