@@ -252,6 +252,8 @@ int main (int argc, char **argv)
     uint64_t rf_bbf = rf_center - (uint64_t)f_shift;
 
 	iirdecim_crcf iir_dc = iirdecim_crcf_create_default(rate_decim, 8);
+	msresamp_crcf downconverter =  msresamp_crcf_create(1/(float)rate_decim, 50);
+	msresamp_crcf_print(downconverter);
     nco_crcf downmixer = nco_crcf_create(LIQUID_NCO);
     nco_crcf_set_phase(downmixer, 0.0f);
     nco_crcf_set_frequency(downmixer,2.*M_PI*(f_shift/(float)rate_bb));
@@ -399,7 +401,8 @@ int main (int argc, char **argv)
 			cbuffercf_read(in1_buffer, nin * rate_decim, &i1b, &nread_1b);
 			nco_crcf_mix_block_down(downmixer, i1b, rxdc1, nread_1b);
 			cbuffercf_release(in1_buffer, nread_1b);
-			iirdecim_crcf_execute_block(iir_dc, rxdc1, nin, rxtdma);
+			//iirdecim_crcf_execute_block(iir_dc, rxdc1, nin, rxtdma);
+			msresamp_crcf_execute(downconverter, rxdc1, nread_1b, rxtdma, &nread_1b);
 			tdma_rx(tdma,(COMP*)rxtdma,rx_samp_count);
 			rx_samp_count += nin;
 
