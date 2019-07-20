@@ -198,17 +198,27 @@ struct FSK * fsk_create_hbr(int Fs, int Rs,int P,int M, int tx_f1, int tx_fs)
         fsk->samp_old[i].imag = 0;
     }
 
+    #ifndef USE_FFTW
     fsk->fft_cfg = kiss_fft_alloc(fsk->Ndft,0,NULL,NULL);
     if(fsk->fft_cfg == NULL){
         free(fsk->samp_old);
         free(fsk);
         return NULL;
     }
+    #else
+    fsk->fft_in = fftwf_malloc(fsk->Ndft * sizeof(fftwf_complex));
+    fsk->fft_out = fftwf_malloc(fsk->Ndft * sizeof(fftwf_complex));
+    fsk->fftw_cfg = fftwf_plan_dft_1d(fsk->Ndft, fsk->fft_in, fsk->fft_out, FFTW_FORWARD, FFTW_ESTIMATE);
+    #endif
     
     fsk->fft_est = (float*)malloc(sizeof(float)*fsk->Ndft/2);
     if(fsk->fft_est == NULL){
         free(fsk->samp_old);
+        #ifndef USE_FFTW
         free(fsk->fft_cfg);
+        #else
+        fftwf_destroy_plan(fsk->fftw_cfg);
+        #endif
         free(fsk);
         return NULL;
     }
@@ -219,7 +229,11 @@ struct FSK * fsk_create_hbr(int Fs, int Rs,int P,int M, int tx_f1, int tx_fs)
             if(fsk->hann_table == NULL){
                 free(fsk->fft_est);
                 free(fsk->samp_old);
+                #ifndef USE_FFTW
                 free(fsk->fft_cfg);
+                #else
+                fftwf_destroy_plan(fsk->fftw_cfg);
+                #endif
                 free(fsk);
                 return NULL;
             }
@@ -248,7 +262,11 @@ struct FSK * fsk_create_hbr(int Fs, int Rs,int P,int M, int tx_f1, int tx_fs)
     if(fsk->stats == NULL){
         free(fsk->fft_est);
         free(fsk->samp_old);
+        #ifndef USE_FFTW
         free(fsk->fft_cfg);
+        #else
+        fftwf_destroy_plan(fsk->fftw_cfg);
+        #endif
         free(fsk);
         return NULL;
     }
@@ -336,17 +354,21 @@ struct FSK * fsk_create(int Fs, int Rs,int M, int tx_f1, int tx_fs)
         fsk->samp_old[i].imag = 0.0;
     }
     
+    #ifndef USE_FFTW
     fsk->fft_cfg = kiss_fft_alloc(Ndft,0,NULL,NULL);
     if(fsk->fft_cfg == NULL){
         free(fsk->samp_old);
         free(fsk);
         return NULL;
     }
+    #endif
     
     fsk->fft_est = (float*)malloc(sizeof(float)*fsk->Ndft/2);
     if(fsk->fft_est == NULL){
         free(fsk->samp_old);
+        #ifndef USE_FFTW
         free(fsk->fft_cfg);
+        #endif
         free(fsk);
         return NULL;
     }
@@ -357,7 +379,9 @@ struct FSK * fsk_create(int Fs, int Rs,int M, int tx_f1, int tx_fs)
             if(fsk->hann_table == NULL){
                 free(fsk->fft_est);
                 free(fsk->samp_old);
+                #ifndef USE_FFTW
                 free(fsk->fft_cfg);
+                #endif
                 free(fsk);
                 return NULL;
             }
@@ -387,7 +411,9 @@ struct FSK * fsk_create(int Fs, int Rs,int M, int tx_f1, int tx_fs)
     if(fsk->stats == NULL){
         free(fsk->fft_est);
         free(fsk->samp_old);
+        #ifndef USE_FFTW
         free(fsk->fft_cfg);
+        #endif
         free(fsk);
         return NULL;
     }
@@ -454,12 +480,22 @@ void fsk_set_nsym(struct FSK *fsk,int nsyms){
     
     fsk->Ndft = Ndft;
     
-    free(fsk->fft_cfg);
     free(fsk->fft_est);
+    fsk->fft_est = (float*)malloc(sizeof(float)*fsk->Ndft/2);
+
+    #ifndef USE_FFTW
+    free(fsk->fft_cfg);
     
     fsk->fft_cfg = kiss_fft_alloc(Ndft,0,NULL,NULL);
-    fsk->fft_est = (float*)malloc(sizeof(float)*fsk->Ndft/2);
-    
+    #else
+    fftwf_destroy_plan(fsk->fftw_cfg);
+    fftwf_free(fsk->fft_in);
+    fftwf_free(fsk->fft_out);
+    fsk->fft_in = fftwf_malloc(fsk->Ndft * sizeof(fftwf_complex));
+    fsk->fft_out = fftwf_malloc(fsk->Ndft * sizeof(fftwf_complex));
+    fsk->fftw_cfg = fftwf_plan_dft_1d(fsk->Ndft, fsk->fft_in, fsk->fft_out, FFTW_FORWARD, FFTW_ESTIMATE);
+    #endif
+
     for(i=0;i<Ndft/2;i++)fsk->fft_est[i] = 0;
     
 }
@@ -487,7 +523,13 @@ uint32_t fsk_nin(struct FSK *fsk){
 }
 
 void fsk_destroy(struct FSK *fsk){
+    #ifndef USE_FFTW
     free(fsk->fft_cfg);
+    #else
+    fftwf_destroy_plan(fsk->fftw_cfg);
+    fftwf_free(fsk->fft_out);
+    fftwf_free(fsk->fft_in);
+    #endif
     free(fsk->samp_old);
     free(fsk->stats);
     free(fsk);
@@ -546,19 +588,25 @@ void fsk_demod_freq_est(struct FSK *fsk, COMP fsk_in[],float *freqs,int M){
     float max;
     float tc;
     int imax;
-    kiss_fft_cfg fft_cfg = fsk->fft_cfg;
     int freqi[M];
     int f_min,f_max,f_zero;
     
+    #ifndef USE_FFTW
+    kiss_fft_cfg fft_cfg = fsk->fft_cfg;
     /* Array to do complex FFT from using kiss_fft */
     #ifdef DEMOD_ALLOC_STACK
-    kiss_fft_cpx *fftin  = (kiss_fft_cpx*)alloca(sizeof(kiss_fft_cpx)*Ndft);
-    kiss_fft_cpx *fftout = (kiss_fft_cpx*)alloca(sizeof(kiss_fft_cpx)*Ndft);
+    COMP *fftin  = (COMP*)alloca(sizeof(kiss_fft_cpx)*Ndft);
+    COMP *fftout = (COMP*)alloca(sizeof(kiss_fft_cpx)*Ndft);
     #else
     kiss_fft_cpx *fftin  = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx)*Ndft);
     kiss_fft_cpx *fftout = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx)*Ndft);
     #endif
     
+    #else
+    COMP *fftin = (COMP*)fsk->fft_in;
+    COMP *fftout = (COMP*)fsk->fft_out;
+    #endif
+
     #ifndef USE_HANN_TABLE
     COMP dphi = comp_exp_j((2*M_PI)/((float)Ndft-1));
     COMP rphi = {.5,0};
@@ -592,39 +640,43 @@ void fsk_demod_freq_est(struct FSK *fsk, COMP fsk_in[],float *freqs,int M){
             rphi = cmult(dphi,rphi);
             hann = .5-rphi.real;
             #endif
-            fftin[i].r = hann*fsk_in[i+Ndft*j].real;
-            fftin[i].i = hann*fsk_in[i+Ndft*j].imag;
+            fftin[i].real = hann*fsk_in[i+Ndft*j].real;
+            fftin[i].imag = hann*fsk_in[i+Ndft*j].imag;
         }
 
         /* Zero out the remaining slots on spare samples */
         for(; i<Ndft;i++){
-            fftin[i].r = 0;
-            fftin[i].i = 0;
+            fftin[i].real = 0;
+            fftin[i].imag = 0;
         }
         
+        #ifndef USE_FFTW
         /* Do the FFT */
-        kiss_fft(fft_cfg,fftin,fftout);
+        kiss_fft(fft_cfg,(kiss_fft_cpx*)fftin,(kiss_fft_cpx*)fftout);
+        #else
+        fftwf_execute(fsk->fftw_cfg);
+        #endif
         
         /* Find the magnitude^2 of each freq slot and stash away in the real
         * value, so this only has to be done once. Since we're only comparing
         * these values and only need the mag of 2 points, we don't need to do
         * a sqrt to each value */
         for(i=0; i<Ndft/2; i++){
-            fftout[i].r = (fftout[i].r*fftout[i].r) + (fftout[i].i*fftout[i].i) ;
+            fftout[i].real = (fftout[i].real*fftout[i].real) + (fftout[i].imag*fftout[i].imag) ;
         }
         
         /* Zero out the minimum and maximum ends */
         for(i=0; i<f_min; i++){
-            fftout[i].r = 0;
+            fftout[i].real = 0;
         }
         for(i=f_max-1; i<Ndft/2; i++){
-            fftout[i].r = 0;
+            fftout[i].real = 0;
         }
         /* Mix back in with the previous fft block */
         /* Copy new fft est into imag of fftout for frequency divination below */
         for(i=0; i<Ndft/2; i++){
-            fsk->fft_est[i] = (fsk->fft_est[i]*(1-tc)) + (sqrtf(fftout[i].r)*tc);
-            fftout[i].i = fsk->fft_est[i];
+            fsk->fft_est[i] = (fsk->fft_est[i]*(1-tc)) + (sqrtf(fftout[i].real)*tc);
+            fftout[i].imag = fsk->fft_est[i];
         }
     }
     
@@ -636,8 +688,8 @@ void fsk_demod_freq_est(struct FSK *fsk, COMP fsk_in[],float *freqs,int M){
         imax = 0;
         max = 0;
         for(j=0;j<Ndft/2;j++){
-            if(fftout[j].i > max){
-                max = fftout[j].i;
+            if(fftout[j].imag > max){
+                max = fftout[j].imag;
                 imax = j;
             }
         }
@@ -647,7 +699,7 @@ void fsk_demod_freq_est(struct FSK *fsk, COMP fsk_in[],float *freqs,int M){
         f_max = imax + f_zero;
         f_max = f_max > Ndft ? Ndft : f_max;
         for(j=f_min; j<f_max; j++)
-            fftout[j].i = 0;
+            fftout[j].imag = 0;
         
         /* Stick the freq index on the list */
         freqi[i] = imax;

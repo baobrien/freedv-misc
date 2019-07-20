@@ -30,7 +30,6 @@
 #define __C2FSK_H
 #include <stdint.h>
 #include "comp.h"
-#include "kiss_fftr.h"
 #include "modem_stats.h"
 
 #define MODE_2FSK 2
@@ -39,6 +38,15 @@
 #define MODE_M_MAX 4
 
 #define FSK_SCALE 16383
+
+#define USE_FFTW
+
+#ifndef USE_FFTW
+#include "kiss_fftr.h"
+#include "kiss_fft.h"
+#else
+#include <fftw3.h>
+#endif
 
 struct FSK {
     /*  Static parameters set up by fsk_init */
@@ -62,7 +70,14 @@ struct FSK {
     /*  Parameters used by demod */
     COMP phi_c[MODE_M_MAX];
     
+    #ifndef USE_FFTW
     kiss_fft_cfg fft_cfg;   /* Config for KISS FFT, used in freq est */
+    #else
+    fftwf_plan fftw_cfg;
+    fftwf_complex* fft_in;
+    fftwf_complex* fft_out;
+    #endif
+    
     float norm_rx_timing;   /* Normalized RX timing */
     
     COMP* samp_old;         /* Tail end of last batch of samples */
